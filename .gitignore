@@ -1,0 +1,6 @@
+# Runtime data
+state/*
+logs/*
+
+# macOS
+.DS_Store
