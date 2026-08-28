@@ -2,5 +2,12 @@
 state/*
 logs/*
 
+# Tests / Python
+.pytest_cache/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
 # macOS
 .DS_Store
