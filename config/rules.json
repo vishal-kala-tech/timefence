@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "revision": 1,
+  "check_interval_seconds": 15,
+  "resources": {
+    "roblox": {
+      "enabled": true,
+      "type": "app",
+      "process_pattern": "Roblox",
+      "policy": {
+        "weekday": {
+          "daily_limit_minutes": 30,
+          "allowed_windows": [
+            { "start": "16:00", "end": "18:00" },
+            { "start": "19:00", "end": "20:30" }
+          ]
+        },
+        "weekend": {
+          "daily_limit_minutes": 90,
+          "allowed_windows": [
+            { "start": "09:00", "end": "12:00" },
+            { "start": "14:00", "end": "17:00" }
+          ]
+        }
+      }
+    },
+    "youtube": {
+      "enabled": true,
+      "type": "website",
+      "domains": ["youtube.com", "youtu.be"],
+      "browser": "chrome",
+      "policy": {
+        "weekday": {
+          "daily_limit_minutes": 30,
+          "allowed_windows": [{ "start": "17:00", "end": "19:00" }]
+        },
+        "weekend": {
+          "daily_limit_minutes": 60,
+          "allowed_windows": [
+            { "start": "10:00", "end": "12:00" },
+            { "start": "15:00", "end": "18:00" }
+          ]
+        }
+      }
+    }
+  }
+}
