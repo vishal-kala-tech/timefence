@@ -1,6 +1,7 @@
 # Runtime data
 state/*
 logs/*
+shortcuts/
 
 # Tests / Python
 .pytest_cache/
