@@ -32,7 +32,7 @@ Runtime files are installed under `~/Library/Application Support/TimeFence`, log
 
 ## Current resources
 - Roblox: process detection and termination.
-- YouTube: Google Chrome active-tab detection and tab closing via AppleScript.
+- YouTube: Google Chrome active-tab detection and tab closing via AppleScript. Regular watch (`youtube.com/watch`, `youtu.be/`) and Shorts (`youtube.com/shorts`) are separate resources with their own limits. Optional `url_contains` / `url_excludes` on a website resource control which tabs count; blocking closes only matching tabs.
 
 ## Future API flow
 Remote API -> download candidate JSON -> validate -> write temporary file -> atomic rename to `rules.json` -> controller reloads next cycle.

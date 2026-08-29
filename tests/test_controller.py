@@ -80,6 +80,24 @@ def test_skips_disabled_and_unknown_resources(app_dir, monkeypatch):
     assert get_usage(app_dir / "state", "youtube", window_id="all_day", now=MONDAY_AFTERNOON) == 15
 
 
+def test_tracks_aliased_resource_via_module_field(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    modules = install_modules(monkeypatch, roblox=True, youtube=True)
+    write_rules(
+        app_dir,
+        make_config(
+            resources={
+                "youtube_shorts": make_resource(enabled=True, module="youtube"),
+            }
+        ),
+    )
+
+    run_cycles(app_dir, monkeypatch)
+
+    modules["youtube"].is_active.assert_called_once()
+    assert get_usage(app_dir / "state", "youtube_shorts", now=MONDAY_AFTERNOON) == 15
+
+
 def test_inactive_resource_is_not_counted_or_blocked(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
     modules = install_modules(monkeypatch, roblox=False)

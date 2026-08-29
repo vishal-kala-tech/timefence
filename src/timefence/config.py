@@ -99,6 +99,13 @@ def validate_resource(name, resource):
     if display_name is not None and (not isinstance(display_name, str) or not display_name.strip()):
         raise ValueError(f"Resource {name!r} display_name must be a non-empty string")
 
+    for field in ("url_contains", "url_excludes"):
+        values = resource.get(field)
+        if values is None:
+            continue
+        if not isinstance(values, list) or not all(isinstance(item, str) and item for item in values):
+            raise ValueError(f"Resource {name!r} {field} must be an array of non-empty strings")
+
     policy = resource.get("policy")
     if not isinstance(policy, dict):
         raise ValueError(f"Resource {name!r} is missing a policy object")

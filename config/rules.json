@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "revision": 3,
+  "revision": 4,
   "check_interval_seconds": 15,
   "resources": {
     "roblox": {
@@ -91,8 +91,10 @@
       "enabled": true,
       "display_name": "YouTube",
       "type": "website",
-      "domains": ["youtube.com", "youtu.be"],
+      "module": "youtube",
       "browser": "chrome",
+      "url_contains": ["youtube.com/watch", "youtu.be/"],
+      "url_excludes": ["youtube.com/shorts"],
       "policy": {
         "default": {
           "daily_limit_minutes": 3,
@@ -144,6 +146,71 @@
                 "start": "15:00",
                 "end": "18:00",
                 "limit_minutes": 30,
+                "warning_minutes": [5, 1]
+              }
+            ]
+          }
+        }
+      }
+    },
+    "youtube_shorts": {
+      "enabled": true,
+      "display_name": "YouTube Shorts",
+      "type": "website",
+      "module": "youtube",
+      "browser": "chrome",
+      "url_contains": ["youtube.com/shorts"],
+      "policy": {
+        "default": {
+          "daily_limit_minutes": 3,
+          "warning_minutes": [2, 1],
+          "allowed_windows": [
+            {
+              "id": "evening",
+              "start": "17:00",
+              "end": "23:00",
+              "limit_minutes": 30,
+              "warning_minutes": [2, 1]
+            }
+          ]
+        },
+        "days": {
+          "saturday": {
+            "daily_limit_minutes": 20,
+            "warning_minutes": [10, 5, 1],
+            "allowed_windows": [
+              {
+                "id": "morning",
+                "start": "10:00",
+                "end": "12:00",
+                "limit_minutes": 15,
+                "warning_minutes": [5, 1]
+              },
+              {
+                "id": "afternoon",
+                "start": "15:00",
+                "end": "18:00",
+                "limit_minutes": 15,
+                "warning_minutes": [5, 1]
+              }
+            ]
+          },
+          "sunday": {
+            "daily_limit_minutes": 20,
+            "warning_minutes": [10, 5, 1],
+            "allowed_windows": [
+              {
+                "id": "morning",
+                "start": "10:00",
+                "end": "12:00",
+                "limit_minutes": 15,
+                "warning_minutes": [5, 1]
+              },
+              {
+                "id": "afternoon",
+                "start": "15:00",
+                "end": "18:00",
+                "limit_minutes": 15,
                 "warning_minutes": [5, 1]
               }
             ]

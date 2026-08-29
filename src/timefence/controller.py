@@ -18,7 +18,19 @@ from .policy import (
 from .resources import roblox, youtube
 from .usage import add_usage, load_state, mark_warning_sent
 
-MODULES = {"roblox": roblox, "youtube": youtube}
+MODULES = {
+    "roblox": roblox,
+    "youtube": youtube,
+    "app": roblox,
+    "website": youtube,
+}
+
+
+def _module_for(name, resource):
+    for key in (resource.get("module"), name, resource.get("type")):
+        if isinstance(key, str) and key in MODULES:
+            return MODULES[key]
+    return None
 
 
 def _now():
@@ -90,10 +102,11 @@ def _emit_warnings(name, resource, policy, state, window, state_dir, now):
 
 
 def _tick_resource(name, resource, state_dir, interval, now):
-    if not resource.get("enabled") or name not in MODULES:
+    if not resource.get("enabled"):
         return
-
-    mod = MODULES[name]
+    mod = _module_for(name, resource)
+    if mod is None:
+        return
     policy = resolve_policy(resource, now=now)
     state = load_state(state_dir, name, now=now)
     decision = evaluate(policy, state, now=now)

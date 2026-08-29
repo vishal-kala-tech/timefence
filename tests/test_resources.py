@@ -84,3 +84,45 @@ def test_youtube_scripts_match_youtube_and_short_links():
     assert "youtu.be/" in youtube.ACTIVE_SCRIPT
     assert "youtube.com/" in youtube.CLOSE_SCRIPT
     assert "youtu.be/" in youtube.CLOSE_SCRIPT
+
+
+WATCH = {
+    "url_contains": ["youtube.com/watch", "youtu.be/"],
+    "url_excludes": ["youtube.com/shorts"],
+}
+SHORTS = {"url_contains": ["youtube.com/shorts"]}
+
+
+def test_url_matches_separates_watch_from_shorts():
+    watch = "https://www.youtube.com/watch?v=abc"
+    shorts = "https://www.youtube.com/shorts/xyz"
+    share = "https://youtu.be/abc"
+    home = "https://www.youtube.com/"
+
+    assert youtube.url_matches(watch, WATCH)
+    assert youtube.url_matches(share, WATCH)
+    assert not youtube.url_matches(shorts, WATCH)
+    assert not youtube.url_matches(home, WATCH)
+
+    assert youtube.url_matches(shorts, SHORTS)
+    assert youtube.url_matches("https://m.youtube.com/shorts/xyz", SHORTS)
+    assert not youtube.url_matches(watch, SHORTS)
+    assert not youtube.url_matches(share, SHORTS)
+    assert not youtube.url_matches(home, SHORTS)
+
+
+def test_active_and_close_scripts_use_resource_url_patterns():
+    watch_script = youtube.active_script(WATCH)
+    shorts_script = youtube.close_script(SHORTS)
+    assert "youtube.com/watch" in watch_script
+    assert "youtu.be/" in watch_script
+    assert "youtube.com/shorts" in watch_script
+    assert "youtube.com/shorts" in shorts_script
+    assert "youtube.com/watch" not in shorts_script
+
+
+def test_youtube_is_active_uses_generated_script(monkeypatch):
+    run = MagicMock(return_value=MagicMock(stdout="YES\n"))
+    monkeypatch.setattr(youtube.subprocess, "run", run)
+    assert youtube.is_active(SHORTS) is True
+    assert run.call_args.args[0] == ["osascript", "-e", youtube.active_script(SHORTS)]

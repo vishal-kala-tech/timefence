@@ -17,7 +17,9 @@ def test_load_config_accepts_shipped_rules():
     shipped = Path(__file__).resolve().parents[1] / "config" / "rules.json"
     cfg = load_config(shipped)
     assert cfg["version"] == 1
-    assert set(cfg["resources"]) >= {"roblox", "youtube"}
+    assert set(cfg["resources"]) >= {"roblox", "youtube", "youtube_shorts"}
+    assert "youtube.com/watch" in cfg["resources"]["youtube"]["url_contains"]
+    assert cfg["resources"]["youtube_shorts"]["url_contains"] == ["youtube.com/shorts"]
     roblox_windows = cfg["resources"]["roblox"]["policy"]["default"]["allowed_windows"]
     assert [window["id"] for window in roblox_windows] == ["after_school", "evening"]
 
@@ -149,6 +151,17 @@ def test_rejects_invalid_warning_minutes():
                     )
                 }
             )
+        )
+
+
+def test_rejects_invalid_url_filters():
+    with pytest.raises(ValueError, match="url_contains"):
+        validate_config(
+            make_config(resources={"youtube": make_resource(url_contains="youtube.com/watch")})
+        )
+    with pytest.raises(ValueError, match="url_excludes"):
+        validate_config(
+            make_config(resources={"youtube": make_resource(url_excludes=[""])})
         )
 
 
