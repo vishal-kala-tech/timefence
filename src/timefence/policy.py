@@ -112,12 +112,15 @@ def _crossed_thresholds(limit, used, warning_minutes, sent, persist_key, message
     return due
 
 
-def due_warnings(policy, state, window=None, label="resource"):
+def due_warnings(policy, state, window=None, label="resource", grant=None, now=None):
+    from . import grants
+
+    now = now or datetime.now()
     state = state or {}
     due = []
     due.extend(
         _crossed_thresholds(
-            limit_seconds(policy.get("daily_limit_minutes")),
+            grants.effective_daily_limit(policy, grant, now=now),
             state.get("total_usage_seconds", 0),
             policy.get("warning_minutes"),
             state.get("warnings_sent"),
@@ -130,7 +133,7 @@ def due_warnings(policy, state, window=None, label="resource"):
         window_state = (state.get("windows") or {}).get(window_id) or {}
         due.extend(
             _crossed_thresholds(
-                limit_seconds(window.get("limit_minutes")),
+                grants.effective_window_limit(window, grant, now=now),
                 window_state.get("usage_seconds", 0),
                 window.get("warning_minutes"),
                 window_state.get("warnings_sent"),
@@ -217,19 +220,25 @@ def allowed_now(policy, now=None):
     return matching_window(policy, now=now) is not None
 
 
-def evaluate(policy, state, now=None):
+def evaluate(policy, state, now=None, grant=None):
+    from . import grants
+
+    now = now or datetime.now()
+    grant = grants.active_grant(grant, now=now)
     window = matching_window(policy, now=now)
     if window is None:
-        return Evaluation(False, "outside_window")
+        window = grants.bonus_window(grant, now=now)
+        if window is None:
+            return Evaluation(False, "outside_window")
 
     used = int((state or {}).get("total_usage_seconds", 0))
-    daily_limit = limit_seconds(policy.get("daily_limit_minutes"))
+    daily_limit = grants.effective_daily_limit(policy, grant, now=now)
     if daily_limit and used >= daily_limit:
         return Evaluation(False, "daily_limit", window)
 
     windows = (state or {}).get("windows") or {}
     window_used = int((windows.get(window.get("id")) or {}).get("usage_seconds", 0))
-    window_limit = limit_seconds(window.get("limit_minutes"))
+    window_limit = grants.effective_window_limit(window, grant, now=now)
     if window_limit and window_used >= window_limit:
         return Evaluation(False, "window_limit", window)
 

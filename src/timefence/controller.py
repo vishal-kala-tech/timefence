@@ -5,13 +5,17 @@ from pathlib import Path
 
 from . import browse
 from .config import load_config
+from .grants import (
+    effective_daily_limit,
+    effective_window_limit,
+    load_grant,
+)
 from .notifications import show_block_countdown, show_notification
 from . import status_page, status_server
 from .policy import (
     DAY_NAMES,
     due_warnings,
     evaluate,
-    limit_seconds,
     limit_label,
     resolve_policy,
     resource_label,
@@ -49,12 +53,12 @@ def _window_summary(policy):
     )
 
 
-def _block_fields(policy, state, decision, now):
+def _block_fields(policy, state, decision, now, grant=None):
     parts = [
         f"now={now.strftime('%H:%M')}",
         f"day={DAY_NAMES[now.weekday()]}",
         f"windows={_window_summary(policy)}",
-        _usage_fields(policy, state, decision.window),
+        _usage_fields(policy, state, decision.window, grant=grant, now=now),
     ]
     if decision.reason == "outside_window":
         parts.append("not in any allowed window")
@@ -65,13 +69,13 @@ def _block_fields(policy, state, decision, now):
     return " ".join(parts)
 
 
-def _usage_fields(policy, state, window=None):
-    daily_limit = limit_seconds(policy.get("daily_limit_minutes"))
+def _usage_fields(policy, state, window=None, grant=None, now=None):
+    daily_limit = effective_daily_limit(policy, grant, now=now)
     used = int(state.get("total_usage_seconds", 0))
     parts = [f"usage={used}s", f"limit={limit_label(daily_limit)}"]
     if window:
         window_id = window.get("id")
-        window_limit = limit_seconds(window.get("limit_minutes"))
+        window_limit = effective_window_limit(window, grant, now=now)
         window_used = int((state.get("windows") or {}).get(window_id, {}).get("usage_seconds", 0))
         parts.extend(
             [
@@ -83,9 +87,9 @@ def _usage_fields(policy, state, window=None):
     return " ".join(parts)
 
 
-def _emit_warnings(name, resource, policy, state, window, state_dir, now):
+def _emit_warnings(name, resource, policy, state, window, state_dir, now, grant=None):
     label = resource_label(name, resource)
-    warnings = due_warnings(policy, state, window=window, label=label)
+    warnings = due_warnings(policy, state, window=window, label=label, grant=grant, now=now)
     if not warnings:
         return
 
@@ -185,7 +189,8 @@ def _tick_resource(name, resource, state_dir, interval, now):
         return
     policy = resolve_policy(resource, now=now)
     state = load_state(state_dir, name, now=now)
-    decision = evaluate(policy, state, now=now)
+    grant = load_grant(state_dir, name, now=now)
+    decision = evaluate(policy, state, now=now, grant=grant)
     active, page = _poll(mod, resource)
     video = _video_from_page(page)
 
@@ -201,7 +206,7 @@ def _tick_resource(name, resource, state_dir, interval, now):
             "Blocking %s: %s %s %s",
             name,
             decision.reason,
-            _block_fields(policy, state, decision, now),
+            _block_fields(policy, state, decision, now, grant=grant),
             _video_fields(video),
         )
         label = resource_label(name, resource)
@@ -218,7 +223,7 @@ def _tick_resource(name, resource, state_dir, interval, now):
             "%s %s %s%s",
             name,
             idle,
-            _usage_fields(policy, state, decision.window),
+            _usage_fields(policy, state, decision.window, grant=grant, now=now),
             f" {extra}" if extra else "",
         )
         return
@@ -230,14 +235,14 @@ def _tick_resource(name, resource, state_dir, interval, now):
         state_dir, name, interval, window_id=decision.window_id, now=now, video=video
     )
     try:
-        _emit_warnings(name, resource, policy, state, decision.window, state_dir, now)
+        _emit_warnings(name, resource, policy, state, decision.window, state_dir, now, grant=grant)
     except Exception:
         logging.exception("Warning evaluation failed for %s", name)
     extra = _video_fields(video)
     logging.info(
         "%s active %s%s",
         name,
-        _usage_fields(policy, state, decision.window),
+        _usage_fields(policy, state, decision.window, grant=grant, now=now),
         f" {extra}" if extra else "",
     )
 

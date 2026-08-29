@@ -135,6 +135,32 @@ def test_page_includes_top_websites(app_dir):
     assert "1 minute and 30 seconds" in page
 
 
+def test_page_shows_bonus_grant(app_dir):
+    _rules(app_dir)
+    from timefence.grants import apply_grant
+    from timefence.policy import resolve_policy
+
+    resource = make_resource(
+        display_name="Roblox",
+        default=make_day_policy(daily_limit_minutes=45),
+    )
+    apply_grant(
+        app_dir / "state",
+        "roblox",
+        resolve_policy(resource, now=MONDAY_AFTERNOON),
+        15,
+        now=MONDAY_AFTERNOON,
+    )
+    model = page_model(
+        make_config(resources={"roblox": resource}),
+        app_dir / "state",
+        now=MONDAY_AFTERNOON,
+    )
+    assert model["resources"][0]["bonus"].startswith("Bonus until")
+    assert "Bonus time" in model["resources"][0]["status_short"]
+    assert "Bonus until" in render_html(model)
+
+
 def test_http_server_serves_live_page(app_dir):
     _rules(app_dir)
     httpd, port = ensure(app_dir, 0)

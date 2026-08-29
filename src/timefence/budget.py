@@ -2,7 +2,14 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import load_config
-from .policy import evaluate, limit_seconds, parse_hhmm, resource_label, resolve_policy
+from .grants import (
+    BONUS_WINDOW_ID,
+    effective_daily_limit,
+    effective_window_limit,
+    grant_summary,
+    load_grant,
+)
+from .policy import evaluate, parse_hhmm, resource_label, resolve_policy
 from .usage import load_state
 
 
@@ -78,6 +85,8 @@ def _used_and_remaining(label, used, limit):
 def _now_sentence(label, decision):
     if decision.allowed and decision.window:
         window = decision.window
+        if window.get("id") == BONUS_WINDOW_ID:
+            return f"{label} is allowed right now with bonus time."
         name = format_window_name(window.get("id"))
         span = format_span(window.get("start"), window.get("end"))
         if span:
@@ -94,16 +103,16 @@ def _now_sentence(label, decision):
     return f"{label} is not allowed right now because it is outside an allowed window."
 
 
-def resource_budget(name, resource, state, now):
+def resource_budget(name, resource, state, now, grant=None):
     policy = resolve_policy(resource, now=now)
-    decision = evaluate(policy, state, now=now)
-    daily_limit = limit_seconds(policy.get("daily_limit_minutes"))
+    decision = evaluate(policy, state, now=now, grant=grant)
+    daily_limit = effective_daily_limit(policy, grant, now=now)
     daily_used = int((state or {}).get("total_usage_seconds", 0))
     windows = []
     for window in policy.get("allowed_windows") or []:
         window_id = window.get("id")
         window_used = int(((state or {}).get("windows") or {}).get(window_id, {}).get("usage_seconds", 0))
-        window_limit = limit_seconds(window.get("limit_minutes"))
+        window_limit = effective_window_limit(window, grant, now=now)
         windows.append(
             {
                 "id": window_id,
@@ -112,7 +121,11 @@ def resource_budget(name, resource, state, now):
                 "used": window_used,
                 "limit": window_limit,
                 "remaining": remaining_seconds(window_limit, window_used),
-                "current": bool(decision.window and decision.window.get("id") == window_id),
+                "current": bool(
+                    decision.window
+                    and decision.window.get("id") == window_id
+                    and window_id != BONUS_WINDOW_ID
+                ),
             }
         )
     return {
@@ -124,6 +137,7 @@ def resource_budget(name, resource, state, now):
         "daily_used": daily_used,
         "daily_limit": daily_limit,
         "daily_remaining": remaining_seconds(daily_limit, daily_used),
+        "bonus": grant_summary(grant, now=now),
         "windows": windows,
     }
 
@@ -135,7 +149,8 @@ def summarize(cfg, state_dir, now=None):
         if not isinstance(resource, dict) or not resource.get("enabled", True):
             continue
         state = load_state(state_dir, name, now=now)
-        rows.append(resource_budget(name, resource, state, now))
+        grant = load_grant(state_dir, name, now=now)
+        rows.append(resource_budget(name, resource, state, now, grant=grant))
     return rows
 
 
@@ -153,6 +168,8 @@ def format_summary(rows, now=None):
     for row in rows:
         label = row["label"]
         lines.append(row["now"])
+        if row.get("bonus"):
+            lines.append(row["bonus"] + ".")
         lines.append(_used_and_remaining(f"Today {label}", row["daily_used"], row["daily_limit"]))
         if not row["windows"]:
             lines.append(f"No allowed windows are configured for {label}.")

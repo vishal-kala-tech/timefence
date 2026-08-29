@@ -45,6 +45,8 @@ def _status_kind(row):
 def _status_short(row):
     text = row.get("now") or ""
     if row.get("allowed"):
+        if row.get("bonus"):
+            return "Bonus time"
         return "OK to use now"
     if "daily limit" in text:
         return "Daily time is used up"
@@ -83,6 +85,7 @@ def page_model(cfg, state_dir, now=None):
                     row.get("daily_limit"), row.get("daily_remaining")
                 ),
                 "percent": used_percent(row.get("daily_used"), row.get("daily_limit")),
+                "bonus": row.get("bonus"),
                 "windows": windows,
             }
         )
@@ -157,6 +160,9 @@ def _card_html(row):
             f'<p class="remaining">No daily cap</p>'
             f'<p class="meta">{used} used today</p>'
         )
+    bonus = ""
+    if row.get("bonus"):
+        bonus = f'<p class="bonus">{html.escape(row["bonus"])}</p>'
     return f'''
 <article class="card {html.escape(kind)}">
   <header>
@@ -164,6 +170,7 @@ def _card_html(row):
     <p class="badge">{html.escape(row["status_short"])}</p>
   </header>
   {numbers}
+  {bonus}
   {_bar(row["percent"], kind)}
   {window_block}
 </article>
@@ -290,6 +297,11 @@ def render_html(model):
     .meta {{
       margin: 0 0 12px;
       color: var(--muted);
+    }}
+    .bonus {{
+      margin: -4px 0 12px;
+      font-weight: 600;
+      color: var(--ok);
     }}
     .bar {{
       height: 12px;

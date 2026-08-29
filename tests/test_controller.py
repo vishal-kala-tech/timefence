@@ -4,6 +4,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from timefence import controller
+from timefence.grants import apply_grant
+from timefence.policy import resolve_policy
 from timefence.usage import add_usage, get_usage, load_state
 from tests.helpers import (
     make_config,
@@ -394,6 +396,26 @@ def test_active_at_daily_limit_is_blocked(app_dir, monkeypatch):
 
     modules["roblox"].enforce.assert_called_once()
     assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 60
+
+
+def test_grant_allows_over_daily_limit(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    modules = install_modules(monkeypatch, roblox=True)
+    resource = make_resource(default=make_day_policy(daily_limit_minutes=1))
+    write_rules(app_dir, make_config(resources={"roblox": resource}))
+    add_usage(app_dir / "state", "roblox", 60, window_id="all_day", now=MONDAY_AFTERNOON)
+    apply_grant(
+        app_dir / "state",
+        "roblox",
+        resolve_policy(resource, now=MONDAY_AFTERNOON),
+        15,
+        now=MONDAY_AFTERNOON,
+    )
+
+    run_cycles(app_dir, monkeypatch)
+
+    modules["roblox"].enforce.assert_not_called()
+    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 75
 
 
 def test_zero_daily_limit_means_no_cap(app_dir, monkeypatch):
