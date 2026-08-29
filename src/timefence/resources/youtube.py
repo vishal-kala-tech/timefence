@@ -13,6 +13,18 @@ TITLE_SUFFIX = " - YouTube"
 OEMBED_URL = "https://www.youtube.com/oembed?format=json&url="
 METADATA_CACHE_SIZE = 20
 _metadata_cache = OrderedDict()
+PLAYBACK_JS = (
+    "(function(){"
+    "var p=document.querySelector('.html5-video-player');"
+    "if(p){"
+    "if(p.classList.contains('paused-mode')||p.classList.contains('unstarted-mode'))return 'paused';"
+    "if(p.classList.contains('playing-mode'))return 'playing';"
+    "}"
+    "var v=document.querySelector('video.html5-main-video')||document.querySelector('video');"
+    "if(!v)return 'unknown';"
+    "return v.paused?'paused':'playing';"
+    "})()"
+)
 
 
 def _patterns(resource, key, default):
@@ -170,8 +182,16 @@ def _apply_metadata(video, resource=None):
     return video
 
 
+def parse_playback(value):
+    text = str(value or "").strip().strip('"').lower()
+    if text in ("paused", "pause"):
+        return "paused"
+    return "playing"
+
+
 def inspect_script(resource):
     match = _url_match_script(resource)
+    js = _applescript_string(PLAYBACK_JS)
     return f'''
 tell application "System Events"
     set chromeFrontmost to false
@@ -187,7 +207,11 @@ if chromeFrontmost then
             {match}
             if urlMatched then
                 set currentTitle to title of active tab of front window
-                return currentURL & linefeed & currentTitle
+                set playback to "unknown"
+                try
+                    set playback to execute front window's active tab javascript {js}
+                end try
+                return currentURL & linefeed & currentTitle & linefeed & playback
             end if
         end if
     end tell
@@ -238,11 +262,13 @@ def inspect(resource):
     if url in ("", "missing value", "NO", "YES") or not url_matches(url, resource):
         return None
     title = clean_title(lines[1] if len(lines) > 1 else "")
+    playback = parse_playback(lines[2] if len(lines) > 2 else "")
     video = _apply_metadata(parse_video(url, title), resource)
     return {
         "url": url,
         "title": (video or {}).get("title") or title,
         "channel": (video or {}).get("channel") or "",
+        "playback": playback,
         "video": video,
     }
 

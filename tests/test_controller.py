@@ -193,6 +193,85 @@ def test_blocked_youtube_still_records_video(app_dir, monkeypatch):
     assert state["videos"][0]["usage_seconds"] == 0
 
 
+def test_paused_youtube_does_not_count_usage(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    video = {
+        "id": "aaaaaaaaaaa",
+        "title": "First",
+        "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+    }
+    mod = MagicMock()
+    mod.inspect.return_value = {
+        "url": video["url"],
+        "title": video["title"],
+        "playback": "paused",
+        "video": video,
+    }
+    monkeypatch.setattr(controller, "MODULES", {"youtube": mod})
+    write_rules(app_dir, make_config(resources={"youtube": make_resource(enabled=True)}))
+
+    run_cycles(app_dir, monkeypatch)
+
+    mod.enforce.assert_not_called()
+    assert get_usage(app_dir / "state", "youtube", now=MONDAY_AFTERNOON) == 0
+    assert load_state(app_dir / "state", "youtube", now=MONDAY_AFTERNOON)["videos"] == []
+
+
+def test_paused_youtube_still_blocks_when_not_allowed(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    video = {"id": "abc123defgh", "title": "Blocked clip", "url": "https://www.youtube.com/watch?v=abc123defgh"}
+    mod = MagicMock()
+    mod.inspect.return_value = {
+        "url": video["url"],
+        "title": video["title"],
+        "playback": "paused",
+        "video": video,
+    }
+    monkeypatch.setattr(controller, "MODULES", {"youtube": mod})
+    write_rules(
+        app_dir,
+        make_config(
+            resources={"youtube": make_resource(default=make_day_policy(allowed_windows=[]))}
+        ),
+    )
+
+    run_cycles(app_dir, monkeypatch)
+
+    mod.enforce.assert_called_once()
+    assert get_usage(app_dir / "state", "youtube", now=MONDAY_AFTERNOON) == 0
+
+
+def test_background_roblox_does_not_count_usage(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    mod = MagicMock()
+    mod.inspect.return_value = {"foreground": False}
+    monkeypatch.setattr(controller, "MODULES", {"roblox": mod})
+    write_rules(app_dir, make_config(resources={"roblox": make_resource(enabled=True)}))
+
+    run_cycles(app_dir, monkeypatch)
+
+    mod.enforce.assert_not_called()
+    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 0
+
+
+def test_background_roblox_still_blocks_when_not_allowed(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    mod = MagicMock()
+    mod.inspect.return_value = {"foreground": False}
+    monkeypatch.setattr(controller, "MODULES", {"roblox": mod})
+    write_rules(
+        app_dir,
+        make_config(
+            resources={"roblox": make_resource(default=make_day_policy(allowed_windows=[]))}
+        ),
+    )
+
+    run_cycles(app_dir, monkeypatch)
+
+    mod.enforce.assert_called_once()
+    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 0
+
+
 def test_inactive_resource_is_not_counted_or_blocked(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
     modules = install_modules(monkeypatch, roblox=False)

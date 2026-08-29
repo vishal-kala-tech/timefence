@@ -4,6 +4,19 @@ from datetime import date, datetime
 from pathlib import Path
 
 MAX_VIDEOS = 5000
+USAGE_TABLE_FIELDS = (
+    "date",
+    "resource",
+    "kind",
+    "window",
+    "seconds",
+    "video_id",
+    "title",
+    "channel",
+    "url",
+    "first_seen",
+    "last_seen",
+)
 
 
 def _day(now=None):
@@ -11,11 +24,79 @@ def _day(now=None):
         return date.today()
     if isinstance(now, datetime):
         return now.date()
-    return now
+    if isinstance(now, date):
+        return now
+    return datetime.strptime(str(now)[:10], "%Y-%m-%d").date()
 
 
 def _path(state_dir, resource, now=None):
     return Path(state_dir) / resource / f"{_day(now).isoformat()}.json"
+
+
+def usage_table_path(state_dir, now=None):
+    return Path(state_dir) / f"{_day(now).isoformat()}.txt"
+
+
+def _cell(value):
+    text = "" if value is None else str(value)
+    return text.replace("\r", " ").replace("\n", " ").replace("|", "/")
+
+
+def _usage_row(day, resource, kind, window="", seconds=0, video=None):
+    video = video or {}
+    return "|".join(
+        _cell(part)
+        for part in (
+            day,
+            resource,
+            kind,
+            window,
+            int(seconds or 0),
+            video.get("id") or "",
+            video.get("title") or "",
+            video.get("channel") or "",
+            video.get("url") or "",
+            video.get("first_seen") or "",
+            video.get("last_seen") or "",
+        )
+    )
+
+
+def write_usage_table(state_dir, now=None):
+    """Rewrite the day's pipe-separated usage file for Excel import."""
+    day = _day(now).isoformat()
+    state_dir = Path(state_dir)
+    rows = ["|".join(USAGE_TABLE_FIELDS)]
+    for json_path in sorted(state_dir.glob(f"*/{day}.json")):
+        resource = json_path.parent.name
+        state = load_state(state_dir, resource, now=day)
+        rows.append(_usage_row(day, resource, "daily", seconds=state.get("total_usage_seconds", 0)))
+        for window_id, payload in sorted((state.get("windows") or {}).items()):
+            rows.append(
+                _usage_row(
+                    day,
+                    resource,
+                    "window",
+                    window=window_id,
+                    seconds=(payload or {}).get("usage_seconds", 0),
+                )
+            )
+        for video in state.get("videos") or []:
+            rows.append(
+                _usage_row(
+                    day,
+                    resource,
+                    "video",
+                    seconds=video.get("usage_seconds", 0),
+                    video=video,
+                )
+            )
+    path = usage_table_path(state_dir, now=day)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return path
 
 
 def empty_state(now=None):
@@ -157,6 +238,10 @@ def _save(path, state):
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, indent=2))
     tmp.replace(path)
+    try:
+        write_usage_table(path.parent.parent, now=state.get("date"))
+    except Exception:
+        logging.exception("Usage table export failed")
 
 
 def get_usage(state_dir, resource, window_id=None, now=None):

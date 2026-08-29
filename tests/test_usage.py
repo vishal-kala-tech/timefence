@@ -193,3 +193,54 @@ def test_load_state_preserves_duplicate_ids_in_watch_history(tmp_path):
     state = load_state(tmp_path, "youtube")
     assert [item["id"] for item in state["videos"]] == ["aaaaaaaaaaa", "bbbbbbbbbbb", "aaaaaaaaaaa"]
     assert state["videos"][2]["title"] == "First again"
+
+
+def test_usage_table_is_pipe_separated_for_excel(tmp_path):
+    when = datetime(2024, 1, 15, 16, 30, 0)
+    add_usage(
+        tmp_path,
+        "youtube",
+        15,
+        window_id="evening",
+        now=when,
+        video={
+            "id": "aaaaaaaaaaa",
+            "title": "First | Part 1",
+            "channel": "Channel A",
+            "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+        },
+    )
+    add_usage(tmp_path, "roblox", 60, window_id="after_school", now=when)
+
+    path = tmp_path / "2024-01-15.txt"
+    text = path.read_text(encoding="utf-8")
+    assert not path.with_suffix(".tmp").exists()
+    lines = text.strip().splitlines()
+    assert lines[0] == "date|resource|kind|window|seconds|video_id|title|channel|url|first_seen|last_seen"
+    assert "2024-01-15|roblox|daily||60||||||" in lines
+    assert "2024-01-15|roblox|window|after_school|60||||||" in lines
+    assert "2024-01-15|youtube|daily||15||||||" in lines
+    assert "2024-01-15|roblox|window|after_school|60||||||" in lines
+    assert "2024-01-15|youtube|daily||15||||||" in lines
+    assert "2024-01-15|youtube|window|evening|15||||||" in lines
+    assert (
+        "2024-01-15|youtube|video||15|aaaaaaaaaaa|First / Part 1|Channel A|"
+        "https://www.youtube.com/watch?v=aaaaaaaaaaa|16:30:00|16:30:00"
+    ) in lines
+    assert "First | Part 1" not in text
+
+
+def test_note_video_updates_usage_table(tmp_path):
+    when = datetime(2024, 1, 15, 19, 0)
+    note_video(
+        tmp_path,
+        "youtube",
+        {
+            "id": "blockedvideo1",
+            "title": "Nope",
+            "url": "https://www.youtube.com/watch?v=blockedvideo1",
+        },
+        now=when,
+    )
+    lines = (tmp_path / "2024-01-15.txt").read_text(encoding="utf-8").splitlines()
+    assert any(line.startswith("2024-01-15|youtube|video||0|blockedvideo1|") for line in lines)

@@ -20,7 +20,7 @@ Just before a block, TimeFence shows one 6-second countdown window (the remainin
 
 Optional `display_name` is used in notification text; otherwise the resource id is used.
 
-Usage is stored per calendar day, per resource, with totals and per-window counters keyed by window id. Changing a window's times does not reset its usage.
+Usage is stored per calendar day, per resource, with totals and per-window counters keyed by window id. Changing a window's times does not reset its usage. Each save also writes a pipe-separated table for Excel at `state/YYYY-MM-DD.txt` (daily and window totals plus YouTube video rows). Import with delimiter `|`.
 
 YouTube watch and Shorts keep a `videos` list in that day's state in the exact order videos were on the front tab. Each row has video id, title, channel, canonical URL, first/last seen time, and seconds. Channel name comes from YouTube's public oEmbed API (no key). The last 20 successful lookups are cached in memory so a video watched across 15-second polls does not refetch. `./scripts/watched.sh` prints today's history.
 
@@ -35,8 +35,8 @@ Edit `config/rules.json`. The controller reloads it every cycle, so an eventual 
 Runtime files are installed under `~/Library/Application Support/TimeFence`, logs under `~/Library/Logs/TimeFence`, and the LaunchAgent under `~/Library/LaunchAgents`.
 
 ## Current resources
-- Roblox: process detection and termination.
-- YouTube: Google Chrome active-tab detection and tab closing via AppleScript. Regular watch (`youtube.com/watch`, `youtu.be/`) and Shorts (`youtube.com/shorts`) are separate resources with their own limits. Optional `url_contains` / `url_excludes` on a website resource control which tabs count; blocking closes only matching tabs.
+- Roblox: counts time only while a matching app is frontmost; a background Roblox process does not use budget. Blocks still quit Roblox if it is running outside a window or over the limit.
+- YouTube: Google Chrome active-tab detection and tab closing via AppleScript. Regular watch (`youtube.com/watch`, `youtu.be/`) and Shorts (`youtube.com/shorts`) are separate resources with their own limits. Optional `url_contains` / `url_excludes` on a website resource control which tabs count; blocking closes only matching tabs. A paused YouTube player does not consume budget (Chrome needs View → Developer → Allow JavaScript from Apple Events). Time-of-day blocks still apply while paused.
 
 ## Future API flow
 Remote API -> download candidate JSON -> validate -> write temporary file -> atomic rename to `rules.json` -> controller reloads next cycle.

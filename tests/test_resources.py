@@ -16,28 +16,38 @@ def no_youtube_network(monkeypatch):
     monkeypatch.setattr(youtube, "fetch_oembed", lambda _url: None)
 
 
-def test_roblox_is_active_when_pgrep_finds_process(monkeypatch):
-    run = MagicMock(return_value=MagicMock(returncode=0))
+def test_roblox_is_active_when_frontmost(monkeypatch):
+    def run(cmd, **_kwargs):
+        if cmd[0] == "pgrep":
+            return MagicMock(returncode=0)
+        return MagicMock(returncode=0, stdout="RobloxPlayer\n")
+
     monkeypatch.setattr(roblox.subprocess, "run", run)
-
     assert roblox.is_active({"process_pattern": "RobloxPlayer"}) is True
-    run.assert_called_once_with(
-        ["pgrep", "-f", "RobloxPlayer"],
-        stdout=roblox.subprocess.DEVNULL,
-    )
+    assert roblox.inspect({"process_pattern": "RobloxPlayer"}) == {"foreground": True}
 
 
-def test_roblox_is_inactive_when_pgrep_misses(monkeypatch):
-    monkeypatch.setattr(
-        roblox.subprocess,
-        "run",
-        MagicMock(return_value=MagicMock(returncode=1)),
-    )
+def test_roblox_is_inactive_when_process_missing(monkeypatch):
+    run = MagicMock(return_value=MagicMock(returncode=1, stdout=""))
+    monkeypatch.setattr(roblox.subprocess, "run", run)
     assert roblox.is_active({}) is False
+    assert roblox.inspect({}) is None
+    assert run.call_args.args[0] == ["pgrep", "-f", "Roblox"]
+
+
+def test_roblox_inspect_background_process_is_not_frontmost(monkeypatch):
+    def run(cmd, **_kwargs):
+        if cmd[0] == "pgrep":
+            return MagicMock(returncode=0)
+        return MagicMock(returncode=0, stdout="Google Chrome\n")
+
+    monkeypatch.setattr(roblox.subprocess, "run", run)
+    assert roblox.inspect({"process_pattern": "Roblox"}) == {"foreground": False}
+    assert roblox.is_active({"process_pattern": "Roblox"}) is False
 
 
 def test_roblox_defaults_process_pattern(monkeypatch):
-    run = MagicMock(return_value=MagicMock(returncode=1))
+    run = MagicMock(return_value=MagicMock(returncode=1, stdout=""))
     monkeypatch.setattr(roblox.subprocess, "run", run)
     roblox.is_active({})
     assert run.call_args.args[0] == ["pgrep", "-f", "Roblox"]
@@ -156,6 +166,7 @@ def test_inspect_returns_parsed_video(monkeypatch):
         ),
     )
     page = youtube.inspect({})
+    assert page["playback"] == "playing"
     assert page["video"] == {
         "id": "dQw4w9WgXcQ",
         "title": "Never Gonna Give You Up",
@@ -186,6 +197,28 @@ def test_inspect_fills_channel_from_youtube_api(monkeypatch):
     assert page["channel"] == "Rick Astley"
 
 
+def test_inspect_reads_paused_playback(monkeypatch):
+    monkeypatch.setattr(
+        youtube.subprocess,
+        "run",
+        MagicMock(
+            return_value=MagicMock(
+                stdout="https://www.youtube.com/watch?v=dQw4w9WgXcQ\nNever Gonna Give You Up - YouTube\npaused\n"
+            )
+        ),
+    )
+    page = youtube.inspect({})
+    assert page["playback"] == "paused"
+    assert page["video"]["id"] == "dQw4w9WgXcQ"
+
+
+def test_parse_playback_defaults_unknown_to_playing():
+    assert youtube.parse_playback("paused") == "paused"
+    assert youtube.parse_playback("playing") == "playing"
+    assert youtube.parse_playback("unknown") == "playing"
+    assert youtube.parse_playback("") == "playing"
+
+
 def test_parse_video_from_watch_share_and_shorts_urls():
     assert youtube.parse_video("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLxx")["id"] == "dQw4w9WgXcQ"
     assert youtube.parse_video("https://m.youtube.com/watch?v=dQw4w9WgXcQ")["id"] == "dQw4w9WgXcQ"
@@ -201,9 +234,10 @@ def test_parse_video_from_watch_share_and_shorts_urls():
     assert youtube.parse_video("https://www.youtube.com/watch?v=") is None
 
 
-def test_inspect_script_does_not_scrape_the_page():
+def test_inspect_script_checks_playback_without_scraping_player_data():
     script = youtube.inspect_script({})
-    assert "execute javascript" not in script
+    assert "execute front window's active tab javascript" in script
+    assert "paused-mode" in script
     assert "ytInitialPlayerResponse" not in script
 
 

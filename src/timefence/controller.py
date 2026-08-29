@@ -150,6 +150,16 @@ def _last_video_id(state):
     return videos[-1].get("id")
 
 
+def _idle_reason(page):
+    if not isinstance(page, dict):
+        return None
+    if page.get("playback") == "paused":
+        return "paused"
+    if page.get("foreground") is False:
+        return "background"
+    return None
+
+
 def _block_countdown_message(label, reason):
     if reason == "outside_window":
         return f"{label} is not allowed right now."
@@ -173,8 +183,7 @@ def _tick_resource(name, resource, state_dir, interval, now):
     if not active:
         return
 
-    if video and video.get("id") != _last_video_id(state):
-        logging.info("%s", _watched_log(name, video))
+    idle = _idle_reason(page)
 
     if not decision.allowed:
         if video:
@@ -193,6 +202,20 @@ def _tick_resource(name, resource, state_dir, interval, now):
             logging.exception("Block countdown failed for %s", name)
         mod.enforce(resource)
         return
+
+    if idle:
+        extra = _video_fields(video)
+        logging.info(
+            "%s %s %s%s",
+            name,
+            idle,
+            _usage_fields(policy, state, decision.window),
+            f" {extra}" if extra else "",
+        )
+        return
+
+    if video and video.get("id") != _last_video_id(state):
+        logging.info("%s", _watched_log(name, video))
 
     state = add_usage(
         state_dir, name, interval, window_id=decision.window_id, now=now, video=video
