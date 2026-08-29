@@ -1,47 +1,95 @@
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 
 from .config import load_config
-from .policy import day_policy, allowed_now
+from .policy import evaluate, limit_seconds, limit_label, resolve_policy
 from .resources import roblox, youtube
-from .usage import get_usage, add_usage
+from .usage import add_usage, load_state
 
 MODULES = {"roblox": roblox, "youtube": youtube}
 
 
+def _now():
+    return datetime.now()
+
+
+def _usage_fields(policy, state, window=None):
+    daily_limit = limit_seconds(policy.get("daily_limit_minutes"))
+    used = int(state.get("total_usage_seconds", 0))
+    parts = [f"usage={used}s", f"limit={limit_label(daily_limit)}"]
+    if window:
+        window_id = window.get("id")
+        window_limit = limit_seconds(window.get("limit_minutes"))
+        window_used = int((state.get("windows") or {}).get(window_id, {}).get("usage_seconds", 0))
+        parts.extend(
+            [
+                f"window={window_id}",
+                f"window_usage={window_used}s",
+                f"window_limit={limit_label(window_limit)}",
+            ]
+        )
+    return " ".join(parts)
+
+
+def _tick_resource(name, resource, state_dir, interval, now):
+    if not resource.get("enabled") or name not in MODULES:
+        return
+
+    mod = MODULES[name]
+    policy = resolve_policy(resource, now=now)
+    state = load_state(state_dir, name, now=now)
+    decision = evaluate(policy, state, now=now)
+    active = mod.is_active(resource)
+
+    if not active:
+        return
+
+    if not decision.allowed:
+        logging.warning(
+            "Blocking %s: %s %s",
+            name,
+            decision.reason,
+            _usage_fields(policy, state, decision.window),
+        )
+        mod.enforce(resource)
+        return
+
+    state = add_usage(state_dir, name, interval, window_id=decision.window_id, now=now)
+    logging.info("%s active %s", name, _usage_fields(policy, state, decision.window))
+
+
 def run(app_dir: Path):
     cfg_path = app_dir / "config/rules.json"
-    state = app_dir / "state"
+    state_dir = app_dir / "state"
     last_revision = None
+    last_cfg = None
 
     while True:
+        interval = 15
         try:
-            cfg = load_config(cfg_path)
-            interval = int(cfg.get("check_interval_seconds", 15))
+            try:
+                cfg = load_config(cfg_path)
+                last_cfg = cfg
+            except Exception:
+                logging.exception("Invalid config; keeping last valid configuration")
+                cfg = last_cfg
+                if cfg is None:
+                    time.sleep(interval)
+                    continue
 
+            interval = int(cfg.get("check_interval_seconds", 15))
             if cfg.get("revision") != last_revision:
                 logging.info("Loaded config revision %s", cfg.get("revision"))
                 last_revision = cfg.get("revision")
 
-            for name, res in cfg["resources"].items():
-                if not res.get("enabled") or name not in MODULES:
-                    continue
-
-                mod = MODULES[name]
-                policy = day_policy(res)
-                active = mod.is_active(res)
-                limit = int(policy.get("daily_limit_minutes", 0)) * 60
-                used = get_usage(state, name)
-                limit_label = f"{limit}s" if limit else "none"
-
-                if active and (not allowed_now(policy) or (limit and used >= limit)):
-                    logging.warning("Blocking %s: schedule/limit usage=%ss limit=%s", name, used, limit_label)
-                    mod.enforce(res)
-                elif active:
-                    total = add_usage(state, name, interval)
-                    logging.info("%s active usage=%ss limit=%s", name, total, limit_label)
-
+            now = _now()
+            for name, resource in cfg["resources"].items():
+                try:
+                    _tick_resource(name, resource, state_dir, interval, now)
+                except Exception:
+                    logging.exception("Resource %s failed", name)
         except Exception:
             logging.exception("Controller cycle failed")
         time.sleep(locals().get("interval", 15))

@@ -1,23 +1,46 @@
 import json
 from pathlib import Path
 
-ALWAYS_WINDOW = [{"start": "00:00", "end": "24:00"}]
+
+def make_window(window_id="all_day", start="00:00", end="24:00", limit_minutes=None):
+    window = {"id": window_id, "start": start, "end": end}
+    if limit_minutes is not None:
+        window["limit_minutes"] = limit_minutes
+    return window
 
 
-def make_policy(daily_limit_minutes=30, allowed_windows=None):
+def make_day_policy(daily_limit_minutes=30, allowed_windows=None):
     return {
         "daily_limit_minutes": daily_limit_minutes,
-        "allowed_windows": ALWAYS_WINDOW if allowed_windows is None else allowed_windows,
+        "allowed_windows": [make_window()] if allowed_windows is None else allowed_windows,
     }
 
 
-def make_resource(enabled=True, weekday=None, weekend=None, **extra):
+def make_policy(default=None, days=None, date_overrides=None, weekday=None, weekend=None):
+    policy = {}
+    if default is not None or (weekday is None and weekend is None):
+        policy["default"] = default or make_day_policy()
+    if days:
+        policy["days"] = days
+    if date_overrides:
+        policy["date_overrides"] = date_overrides
+    if weekday is not None:
+        policy["weekday"] = weekday
+    if weekend is not None:
+        policy["weekend"] = weekend
+    return policy
+
+
+def make_resource(enabled=True, default=None, days=None, date_overrides=None, weekday=None, weekend=None, **extra):
     resource = {
         "enabled": enabled,
-        "policy": {
-            "weekday": weekday or make_policy(),
-            "weekend": weekend or make_policy(daily_limit_minutes=90),
-        },
+        "policy": make_policy(
+            default=default,
+            days=days,
+            date_overrides=date_overrides,
+            weekday=weekday,
+            weekend=weekend,
+        ),
     }
     resource.update(extra)
     return resource
