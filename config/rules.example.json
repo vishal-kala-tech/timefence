@@ -3,6 +3,8 @@
   "revision": 5,
   "check_interval_seconds": 15,
   "log_browsing": true,
+  "status_page": true,
+  "status_port": 8743,
   "resources": {
     "roblox": {
       "enabled": true,

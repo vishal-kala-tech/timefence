@@ -181,3 +181,20 @@ def test_rejects_non_boolean_log_browsing():
     cfg = make_config(log_browsing="yes")
     with pytest.raises(ValueError, match="log_browsing must be a boolean"):
         validate_config(cfg)
+
+
+def test_rejects_invalid_status_port():
+    cfg = make_config()
+    cfg["status_port"] = 0
+    with pytest.raises(ValueError, match="status_port"):
+        validate_config(cfg)
+    cfg["status_port"] = True
+    with pytest.raises(ValueError, match="status_port"):
+        validate_config(cfg)
+
+
+def test_accepts_status_page_settings():
+    cfg = make_config()
+    cfg["status_page"] = False
+    cfg["status_port"] = 8743
+    assert validate_config(cfg)["status_port"] == 8743

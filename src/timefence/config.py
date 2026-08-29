@@ -160,6 +160,14 @@ def validate_config(cfg):
     if "log_browsing" in cfg and not isinstance(cfg.get("log_browsing"), bool):
         raise ValueError("log_browsing must be a boolean")
 
+    if "status_page" in cfg and not isinstance(cfg.get("status_page"), bool):
+        raise ValueError("status_page must be a boolean")
+
+    if "status_port" in cfg:
+        port = cfg.get("status_port")
+        if isinstance(port, bool) or not isinstance(port, int) or not (1 <= port <= 65535):
+            raise ValueError("status_port must be an integer from 1 to 65535")
+
     for name, resource in resources.items():
         validate_resource(name, resource)
 

@@ -36,6 +36,11 @@ def skip_browse_inspect(monkeypatch):
     monkeypatch.setattr(controller.browse, "inspect", lambda: None)
 
 
+@pytest.fixture(autouse=True)
+def skip_status_page(monkeypatch):
+    monkeypatch.setattr(controller, "_publish_status_page", lambda *args, **kwargs: None)
+
+
 def stop_after(n=1):
     slept = []
 

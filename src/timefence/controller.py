@@ -6,6 +6,7 @@ from pathlib import Path
 from . import browse
 from .config import load_config
 from .notifications import show_block_countdown, show_notification
+from . import status_page, status_server
 from .policy import (
     DAY_NAMES,
     due_warnings,
@@ -241,12 +242,31 @@ def _tick_resource(name, resource, state_dir, interval, now):
     )
 
 
+def _publish_status_page(app_dir, cfg, now):
+    if not cfg.get("status_page", True):
+        status_server.stop()
+        return
+    try:
+        status_page.write_html(app_dir, now=now, cfg=cfg)
+    except Exception:
+        logging.exception("Status page write failed")
+    port = int(cfg.get("status_port", status_page.DEFAULT_STATUS_PORT))
+    status_server.ensure(app_dir, port)
+
+
 def run(app_dir: Path):
     cfg_path = app_dir / "config/rules.json"
     state_dir = app_dir / "state"
     last_revision = None
     last_cfg = None
 
+    try:
+        _run_loop(app_dir, cfg_path, state_dir, last_revision, last_cfg)
+    finally:
+        status_server.stop()
+
+
+def _run_loop(app_dir, cfg_path, state_dir, last_revision, last_cfg):
     while True:
         interval = 15
         try:
@@ -276,6 +296,10 @@ def run(app_dir: Path):
                     _tick_resource(name, resource, state_dir, interval, now)
                 except Exception:
                     logging.exception("Resource %s failed", name)
+            try:
+                _publish_status_page(app_dir, cfg, now)
+            except Exception:
+                logging.exception("Status page failed")
         except Exception:
             logging.exception("Controller cycle failed")
         time.sleep(locals().get("interval", 15))

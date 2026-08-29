@@ -7,6 +7,7 @@ from urllib.parse import urlparse, urlunparse
 from .usage import _cell, _day, _timestamp
 
 MAX_VISITS = 5000
+TOP_SITES = 10
 BROWSE_RESOURCE = "browse"
 BROWSE_TABLE_FIELDS = (
     "date",
@@ -125,6 +126,43 @@ def load_browse_state(state_dir, now=None):
         if entry:
             visits.append(entry)
     return {"date": data.get("date") or _day(now).isoformat(), "visits": visits}
+
+
+def display_host(host):
+    text = str(host or "").strip().lower()
+    if text.startswith("www."):
+        text = text[4:]
+    return text
+
+
+def _is_local_host(host):
+    text = display_host(host)
+    if text in ("localhost", "127.0.0.1", "::1"):
+        return True
+    return text.startswith("127.0.0.1:") or text.startswith("localhost:")
+
+
+def top_sites(state_dir, now=None, limit=TOP_SITES):
+    """Hosts ranked by time on the active Chrome tab today."""
+    limit = max(0, int(limit))
+    buckets = {}
+    for visit in load_browse_state(state_dir, now=now).get("visits") or []:
+        host = display_host(visit.get("host"))
+        if not host or _is_local_host(host):
+            continue
+        bucket = buckets.setdefault(
+            host, {"host": host, "seconds": 0, "visits": 0, "title": ""}
+        )
+        bucket["seconds"] += int(visit.get("usage_seconds") or 0)
+        bucket["visits"] += 1
+        title = str(visit.get("title") or "").strip()
+        if title:
+            bucket["title"] = title
+    ranked = sorted(
+        buckets.values(),
+        key=lambda item: (-item["seconds"], -item["visits"], item["host"]),
+    )
+    return ranked[:limit]
 
 
 def write_browse_table(state_dir, now=None):
