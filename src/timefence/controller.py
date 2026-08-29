@@ -33,13 +33,14 @@ def run(app_dir: Path):
                 active = mod.is_active(res)
                 limit = int(policy.get("daily_limit_minutes", 0)) * 60
                 used = get_usage(state, name)
+                limit_label = f"{limit}s" if limit else "none"
 
                 if active and (not allowed_now(policy) or (limit and used >= limit)):
-                    logging.warning("Blocking %s: schedule/limit", name)
+                    logging.warning("Blocking %s: schedule/limit usage=%ss limit=%s", name, used, limit_label)
                     mod.enforce(res)
                 elif active:
                     total = add_usage(state, name, interval)
-                    logging.info("%s active usage=%ss", name, total)
+                    logging.info("%s active usage=%ss limit=%s", name, total, limit_label)
 
         except Exception:
             logging.exception("Controller cycle failed")

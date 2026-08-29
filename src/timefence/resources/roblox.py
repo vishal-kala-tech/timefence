@@ -1,7 +1,22 @@
 import subprocess
 
+
 def is_active(resource):
-    return subprocess.run(["pgrep","-f",resource.get("process_pattern","Roblox")],stdout=subprocess.DEVNULL).returncode == 0
+    process_pattern = resource.get("process_pattern", "Roblox")
+
+    result = subprocess.run(
+        ["pgrep", "-f", process_pattern],
+        stdout=subprocess.DEVNULL,
+    )
+
+    return result.returncode == 0
+
 
 def enforce(resource):
-    subprocess.run(["pkill","-9","-f",resource.get("process_pattern","Roblox")],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    process_pattern = resource.get("process_pattern", "Roblox")
+
+    subprocess.run(
+        ["pkill", "-9", "-f", process_pattern],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
