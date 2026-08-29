@@ -114,6 +114,13 @@ check() {
     print_log_tail "$ERR_LOG" "stderr"
     print_log_tail "$OUT_LOG" "stdout"
 
+    local watched
+    watched="$(dirname "$0")/watched.sh"
+    if [ -x "$watched" ]; then
+        echo "Watched videos:"
+        "$watched" | sed 's/^/  /'
+    fi
+
     if [ "$state" = "running" ] && [ -n "$proc_pid" ]; then
         echo "Status: RUNNING"
         healthy=0

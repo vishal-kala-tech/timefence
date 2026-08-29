@@ -19,10 +19,19 @@ fi
 
 export TIME_FENCE_HOME="${TIME_FENCE_HOME:-$APP}"
 
-python3 - <<'PY'
+python3 - "$1" <<'PY'
+import logging
+import sys
 import timefence.notifications as n
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 print("module:", n.__file__)
-ok = n.show_notification("TimeFence", "Test notification from TimeFence.")
+if sys.argv[1] == "--countdown":
+    print("Showing 6-second block countdown, then exiting.")
+    ok = n.show_block_countdown("TimeFence", "YouTube has no time remaining today.")
+else:
+    print("Showing 6-second warning countdown in the background.")
+    ok = n.show_notification("TimeFence", "Test notification from TimeFence.")
 print("sent" if ok else "failed")
 raise SystemExit(0 if ok else 1)
 PY

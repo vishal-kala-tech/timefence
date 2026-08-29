@@ -3,6 +3,8 @@ import logging
 from datetime import date, datetime
 from pathlib import Path
 
+MAX_VIDEOS = 5000
+
 
 def _day(now=None):
     if now is None:
@@ -22,6 +24,7 @@ def empty_state(now=None):
         "total_usage_seconds": 0,
         "warnings_sent": [],
         "windows": {},
+        "videos": [],
     }
 
 
@@ -48,6 +51,82 @@ def _window_state(payload):
     return {"usage_seconds": int(payload or 0), "warnings_sent": []}
 
 
+def _video_entry(payload):
+    if not isinstance(payload, dict):
+        return None
+    video_id = str(payload.get("id") or "").strip()
+    if not video_id:
+        return None
+    return {
+        "id": video_id,
+        "title": str(payload.get("title") or ""),
+        "channel": str(payload.get("channel") or ""),
+        "url": str(payload.get("url") or ""),
+        "first_seen": str(payload.get("first_seen") or ""),
+        "last_seen": str(payload.get("last_seen") or ""),
+        "usage_seconds": int(payload.get("usage_seconds") or 0),
+    }
+
+
+def _videos(values):
+    if not isinstance(values, list):
+        return []
+    out = []
+    for item in values:
+        entry = _video_entry(item)
+        if entry:
+            out.append(entry)
+    return out
+
+
+def _timestamp(now=None):
+    if isinstance(now, datetime):
+        return now.strftime("%H:%M:%S")
+    if now is None:
+        return datetime.now().strftime("%H:%M:%S")
+    return str(now)
+
+
+def _append_watch(state, video, seconds, now):
+    """Append a watch-history row. Consecutive polls of the same id stay one session."""
+    if not isinstance(video, dict):
+        return False
+    video_id = str(video.get("id") or "").strip()
+    if not video_id:
+        return False
+    ts = _timestamp(now)
+    title = str(video.get("title") or "")
+    channel = str(video.get("channel") or "")
+    url = str(video.get("url") or "")
+    videos = state.setdefault("videos", [])
+    if videos and videos[-1].get("id") == video_id:
+        last = videos[-1]
+        last["last_seen"] = ts
+        last["usage_seconds"] = int(last.get("usage_seconds") or 0) + int(seconds)
+        if title:
+            last["title"] = title
+        if channel:
+            last["channel"] = channel
+        if url:
+            last["url"] = url
+        return False
+    if len(videos) >= MAX_VIDEOS:
+        logging.warning("Watch history full (%s); not adding %s", MAX_VIDEOS, video_id)
+        return False
+    videos.append(
+        {
+            "id": video_id,
+            "title": title,
+            "channel": channel,
+            "url": url,
+            "first_seen": ts,
+            "last_seen": ts,
+            "usage_seconds": int(seconds),
+        }
+    )
+    return True
+
+
 def _normalize(data, now=None):
     if not isinstance(data, dict):
         return empty_state(now)
@@ -58,6 +137,7 @@ def _normalize(data, now=None):
         "total_usage_seconds": int(total or 0),
         "warnings_sent": _warning_list(data.get("warnings_sent")),
         "windows": {str(window_id): _window_state(payload) for window_id, payload in windows.items()},
+        "videos": _videos(data.get("videos")),
     }
 
 
@@ -86,7 +166,7 @@ def get_usage(state_dir, resource, window_id=None, now=None):
     return int(state["total_usage_seconds"])
 
 
-def add_usage(state_dir, resource, seconds, window_id=None, now=None):
+def add_usage(state_dir, resource, seconds, window_id=None, now=None, video=None):
     path = _path(state_dir, resource, now=now)
     state = load_state(state_dir, resource, now=now)
     state["date"] = _day(now).isoformat()
@@ -95,6 +175,17 @@ def add_usage(state_dir, resource, seconds, window_id=None, now=None):
         window = state["windows"].setdefault(window_id, {"usage_seconds": 0, "warnings_sent": []})
         window["usage_seconds"] = int(window.get("usage_seconds", 0)) + int(seconds)
         window.setdefault("warnings_sent", [])
+    if video:
+        _append_watch(state, video, seconds, now)
+    _save(path, state)
+    return state
+
+
+def note_video(state_dir, resource, video, now=None):
+    path = _path(state_dir, resource, now=now)
+    state = load_state(state_dir, resource, now=now)
+    state["date"] = _day(now).isoformat()
+    _append_watch(state, video, 0, now)
     _save(path, state)
     return state
 

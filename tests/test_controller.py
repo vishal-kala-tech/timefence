@@ -26,6 +26,11 @@ def freeze_now(monkeypatch, when):
     monkeypatch.setattr(controller, "_now", lambda: when)
 
 
+@pytest.fixture(autouse=True)
+def skip_block_countdown(monkeypatch):
+    monkeypatch.setattr(controller, "show_block_countdown", lambda *args, **kwargs: True)
+
+
 def stop_after(n=1):
     slept = []
 
@@ -49,6 +54,7 @@ def install_modules(monkeypatch, **active):
     modules = {}
     for name, is_active in active.items():
         mod = MagicMock()
+        mod.inspect = None
         mod.is_active.return_value = is_active
         modules[name] = mod
     monkeypatch.setattr(controller, "MODULES", modules)
@@ -98,6 +104,95 @@ def test_tracks_aliased_resource_via_module_field(app_dir, monkeypatch):
     assert get_usage(app_dir / "state", "youtube_shorts", now=MONDAY_AFTERNOON) == 15
 
 
+def test_records_youtube_watch_history_in_sequence(app_dir, monkeypatch, caplog):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    pages = [
+        {
+            "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+            "title": "First",
+            "video": {
+                "id": "aaaaaaaaaaa",
+                "title": "First",
+                "channel": "Channel A",
+                "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+            },
+        },
+        {
+            "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+            "title": "First",
+            "video": {
+                "id": "aaaaaaaaaaa",
+                "title": "First",
+                "channel": "Channel A",
+                "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+            },
+        },
+        {
+            "url": "https://www.youtube.com/watch?v=bbbbbbbbbbb",
+            "title": "Second",
+            "video": {
+                "id": "bbbbbbbbbbb",
+                "title": "Second",
+                "url": "https://www.youtube.com/watch?v=bbbbbbbbbbb",
+            },
+        },
+        {
+            "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+            "title": "First",
+            "video": {
+                "id": "aaaaaaaaaaa",
+                "title": "First",
+                "channel": "Channel A",
+                "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+            },
+        },
+    ]
+    mod = MagicMock()
+    mod.inspect.side_effect = pages
+    monkeypatch.setattr(controller, "MODULES", {"youtube": mod})
+    write_rules(app_dir, make_config(resources={"youtube": make_resource(enabled=True)}))
+
+    import logging
+
+    caplog.set_level(logging.INFO)
+    run_cycles(app_dir, monkeypatch, cycles=4)
+
+    state = load_state(app_dir / "state", "youtube", now=MONDAY_AFTERNOON)
+    assert [item["id"] for item in state["videos"]] == ["aaaaaaaaaaa", "bbbbbbbbbbb", "aaaaaaaaaaa"]
+    assert state["videos"][0]["usage_seconds"] == 30
+    assert state["videos"][1]["usage_seconds"] == 15
+    assert state["videos"][2]["usage_seconds"] == 15
+    watched = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Watched youtube:")]
+    assert watched == [
+        "Watched youtube: aaaaaaaaaaa First (Channel A)",
+        "Watched youtube: bbbbbbbbbbb Second",
+        "Watched youtube: aaaaaaaaaaa First (Channel A)",
+    ]
+    mod.is_active.assert_not_called()
+
+
+def test_blocked_youtube_still_records_video(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    video = {"id": "abc123defgh", "title": "Blocked clip", "url": "https://www.youtube.com/watch?v=abc123defgh"}
+    mod = MagicMock()
+    mod.inspect.return_value = {"url": video["url"], "title": video["title"], "video": video}
+    monkeypatch.setattr(controller, "MODULES", {"youtube": mod})
+    write_rules(
+        app_dir,
+        make_config(
+            resources={"youtube": make_resource(default=make_day_policy(allowed_windows=[]))}
+        ),
+    )
+
+    run_cycles(app_dir, monkeypatch)
+
+    mod.enforce.assert_called_once()
+    state = load_state(app_dir / "state", "youtube", now=MONDAY_AFTERNOON)
+    assert state["total_usage_seconds"] == 0
+    assert [item["id"] for item in state["videos"]] == ["abc123defgh"]
+    assert state["videos"][0]["usage_seconds"] == 0
+
+
 def test_inactive_resource_is_not_counted_or_blocked(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
     modules = install_modules(monkeypatch, roblox=False)
@@ -142,6 +237,57 @@ def test_active_outside_window_is_blocked_without_usage(app_dir, monkeypatch):
 
     modules["roblox"].enforce.assert_called_once()
     assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 0
+
+
+def test_block_shows_countdown_then_enforces(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    order = []
+
+    def countdown(title, message, seconds=None):
+        order.append(("countdown", title, message))
+        return True
+
+    monkeypatch.setattr(controller, "show_block_countdown", countdown)
+    modules = install_modules(monkeypatch, roblox=True)
+    modules["roblox"].enforce.side_effect = lambda _resource: order.append("enforce")
+    write_rules(
+        app_dir,
+        make_config(
+            resources={
+                "roblox": make_resource(
+                    display_name="Roblox",
+                    default=make_day_policy(allowed_windows=[]),
+                )
+            }
+        ),
+    )
+
+    run_cycles(app_dir, monkeypatch)
+
+    assert order[0] == (
+        "countdown",
+        "TimeFence",
+        "Roblox is not allowed right now.",
+    )
+    assert order[1] == "enforce"
+
+
+def test_block_still_enforces_if_countdown_fails(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    monkeypatch.setattr(
+        controller,
+        "show_block_countdown",
+        MagicMock(side_effect=RuntimeError("osascript failed")),
+    )
+    modules = install_modules(monkeypatch, roblox=True)
+    write_rules(
+        app_dir,
+        make_config(resources={"roblox": make_resource(default=make_day_policy(allowed_windows=[]))}),
+    )
+
+    run_cycles(app_dir, monkeypatch)
+
+    modules["roblox"].enforce.assert_called_once()
 
 
 def test_active_at_daily_limit_is_blocked(app_dir, monkeypatch):

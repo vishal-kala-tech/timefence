@@ -1,6 +1,19 @@
 from unittest.mock import MagicMock
 
+import json
+
+import pytest
+
 from timefence.resources import roblox, youtube
+
+_real_fetch_oembed = youtube.fetch_oembed
+_real_lookup_metadata = youtube.lookup_metadata
+
+
+@pytest.fixture(autouse=True)
+def no_youtube_network(monkeypatch):
+    youtube._metadata_cache.clear()
+    monkeypatch.setattr(youtube, "fetch_oembed", lambda _url: None)
 
 
 def test_roblox_is_active_when_pgrep_finds_process(monkeypatch):
@@ -41,8 +54,10 @@ def test_roblox_enforce_sends_kill(monkeypatch):
     )
 
 
-def test_youtube_is_active_only_on_yes(monkeypatch):
-    run = MagicMock(return_value=MagicMock(stdout="YES\n"))
+def test_youtube_is_active_when_inspect_returns_url(monkeypatch):
+    run = MagicMock(
+        return_value=MagicMock(stdout="https://www.youtube.com/watch?v=dQw4w9WgXcQ\nNever Gonna Give You Up - YouTube\n")
+    )
     monkeypatch.setattr(youtube.subprocess, "run", run)
     assert youtube.is_active({}) is True
     run.assert_called_once_with(
@@ -122,7 +137,108 @@ def test_active_and_close_scripts_use_resource_url_patterns():
 
 
 def test_youtube_is_active_uses_generated_script(monkeypatch):
-    run = MagicMock(return_value=MagicMock(stdout="YES\n"))
+    run = MagicMock(
+        return_value=MagicMock(stdout="https://www.youtube.com/shorts/xyz12345678\nA Short - YouTube\n")
+    )
     monkeypatch.setattr(youtube.subprocess, "run", run)
     assert youtube.is_active(SHORTS) is True
-    assert run.call_args.args[0] == ["osascript", "-e", youtube.active_script(SHORTS)]
+    assert run.call_args.args[0] == ["osascript", "-e", youtube.inspect_script(SHORTS)]
+
+
+def test_inspect_returns_parsed_video(monkeypatch):
+    monkeypatch.setattr(
+        youtube.subprocess,
+        "run",
+        MagicMock(
+            return_value=MagicMock(
+                stdout="https://youtu.be/dQw4w9WgXcQ?t=30\nNever Gonna Give You Up - YouTube\n"
+            )
+        ),
+    )
+    page = youtube.inspect({})
+    assert page["video"] == {
+        "id": "dQw4w9WgXcQ",
+        "title": "Never Gonna Give You Up",
+        "channel": "",
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    }
+
+
+def test_inspect_fills_channel_from_youtube_api(monkeypatch):
+    monkeypatch.setattr(
+        youtube.subprocess,
+        "run",
+        MagicMock(
+            return_value=MagicMock(stdout="https://www.youtube.com/watch?v=dQw4w9WgXcQ\nNever Gonna Give You Up - YouTube\n")
+        ),
+    )
+    monkeypatch.setattr(
+        youtube,
+        "lookup_metadata",
+        lambda video_id: (
+            {"title": "Never Gonna Give You Up", "channel": "Rick Astley"}
+            if video_id == "dQw4w9WgXcQ"
+            else None
+        ),
+    )
+    page = youtube.inspect({})
+    assert page["video"]["channel"] == "Rick Astley"
+    assert page["channel"] == "Rick Astley"
+
+
+def test_parse_video_from_watch_share_and_shorts_urls():
+    assert youtube.parse_video("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLxx")["id"] == "dQw4w9WgXcQ"
+    assert youtube.parse_video("https://m.youtube.com/watch?v=dQw4w9WgXcQ")["id"] == "dQw4w9WgXcQ"
+    assert youtube.parse_video("https://youtu.be/dQw4w9WgXcQ")["url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    shorts = youtube.parse_video("https://www.youtube.com/shorts/xyz12345678", "Clip - YouTube", "Clip Channel")
+    assert shorts == {
+        "id": "xyz12345678",
+        "title": "Clip",
+        "channel": "Clip Channel",
+        "url": "https://www.youtube.com/shorts/xyz12345678",
+    }
+    assert youtube.parse_video("https://www.youtube.com/") is None
+    assert youtube.parse_video("https://www.youtube.com/watch?v=") is None
+
+
+def test_inspect_script_does_not_scrape_the_page():
+    script = youtube.inspect_script({})
+    assert "execute javascript" not in script
+    assert "ytInitialPlayerResponse" not in script
+
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def read(self):
+        return json.dumps(self._payload).encode()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+
+def test_fetch_oembed_uses_author_name(monkeypatch):
+    monkeypatch.setattr(youtube, "fetch_oembed", _real_fetch_oembed)
+    monkeypatch.setattr(
+        youtube,
+        "urlopen",
+        lambda _request, timeout=2: _FakeResponse({"title": "Song", "author_name": "Rick Astley"}),
+    )
+    meta = youtube.fetch_oembed("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    assert meta["channel"] == "Rick Astley"
+    assert meta["title"] == "Song"
+
+
+def test_lookup_metadata_uses_oembed(monkeypatch):
+    monkeypatch.setattr(youtube, "lookup_metadata", _real_lookup_metadata)
+    monkeypatch.setattr(
+        youtube,
+        "fetch_oembed",
+        lambda url: {"title": "Song", "channel": "Rick Astley"} if "dQw4w9WgXcQ" in url else None,
+    )
+    meta = youtube.lookup_metadata("dQw4w9WgXcQ")
+    assert meta["channel"] == "Rick Astley"

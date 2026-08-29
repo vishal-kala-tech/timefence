@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import load_config
-from .notifications import show_notification
+from .notifications import show_block_countdown, show_notification
 from .policy import (
     DAY_NAMES,
     due_warnings,
@@ -16,7 +16,7 @@ from .policy import (
     warning_dialog_message,
 )
 from .resources import roblox, youtube
-from .usage import add_usage, load_state, mark_warning_sent
+from .usage import add_usage, load_state, mark_warning_sent, note_video
 
 MODULES = {
     "roblox": roblox,
@@ -101,6 +101,63 @@ def _emit_warnings(name, resource, policy, state, window, state_dir, now):
     logging.info("Warned %s: %s", name, message)
 
 
+def _poll(mod, resource):
+    inspect = getattr(mod, "inspect", None)
+    if callable(inspect):
+        page = inspect(resource)
+        if isinstance(page, dict):
+            return True, page
+        if page is None:
+            return False, None
+    return bool(mod.is_active(resource)), None
+
+
+def _video_from_page(page):
+    if not isinstance(page, dict):
+        return None
+    video = page.get("video")
+    if isinstance(video, dict) and video.get("id"):
+        return video
+    return None
+
+
+def _video_fields(video):
+    if not video:
+        return ""
+    title = video.get("title") or ""
+    channel = video.get("channel") or ""
+    parts = [f"video={video.get('id')}"]
+    if title:
+        parts.append(f"title={title!r}")
+    if channel:
+        parts.append(f"channel={channel!r}")
+    return " ".join(parts)
+
+
+def _watched_log(name, video):
+    bits = [f"Watched {name}:", video.get("id") or "", video.get("title") or ""]
+    message = " ".join(bit for bit in bits if bit)
+    channel = video.get("channel") or ""
+    if channel:
+        message += f" ({channel})"
+    return message
+
+
+def _last_video_id(state):
+    videos = state.get("videos") or []
+    if not videos:
+        return None
+    return videos[-1].get("id")
+
+
+def _block_countdown_message(label, reason):
+    if reason == "outside_window":
+        return f"{label} is not allowed right now."
+    if reason == "window_limit":
+        return f"{label} has no time remaining in this window."
+    return f"{label} has no time remaining today."
+
+
 def _tick_resource(name, resource, state_dir, interval, now):
     if not resource.get("enabled"):
         return
@@ -110,27 +167,47 @@ def _tick_resource(name, resource, state_dir, interval, now):
     policy = resolve_policy(resource, now=now)
     state = load_state(state_dir, name, now=now)
     decision = evaluate(policy, state, now=now)
-    active = mod.is_active(resource)
+    active, page = _poll(mod, resource)
+    video = _video_from_page(page)
 
     if not active:
         return
 
+    if video and video.get("id") != _last_video_id(state):
+        logging.info("%s", _watched_log(name, video))
+
     if not decision.allowed:
+        if video:
+            note_video(state_dir, name, video, now=now)
         logging.warning(
-            "Blocking %s: %s %s",
+            "Blocking %s: %s %s %s",
             name,
             decision.reason,
             _block_fields(policy, state, decision, now),
+            _video_fields(video),
         )
+        label = resource_label(name, resource)
+        try:
+            show_block_countdown("TimeFence", _block_countdown_message(label, decision.reason))
+        except Exception:
+            logging.exception("Block countdown failed for %s", name)
         mod.enforce(resource)
         return
 
-    state = add_usage(state_dir, name, interval, window_id=decision.window_id, now=now)
+    state = add_usage(
+        state_dir, name, interval, window_id=decision.window_id, now=now, video=video
+    )
     try:
         _emit_warnings(name, resource, policy, state, decision.window, state_dir, now)
     except Exception:
         logging.exception("Warning evaluation failed for %s", name)
-    logging.info("%s active %s", name, _usage_fields(policy, state, decision.window))
+    extra = _video_fields(video)
+    logging.info(
+        "%s active %s%s",
+        name,
+        _usage_fields(policy, state, decision.window),
+        f" {extra}" if extra else "",
+    )
 
 
 def run(app_dir: Path):

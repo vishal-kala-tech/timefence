@@ -2,7 +2,7 @@ import json
 from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
-from timefence.usage import add_usage, get_usage, load_state
+from timefence.usage import add_usage, get_usage, load_state, note_video
 
 
 def test_get_usage_returns_zero_when_file_missing(tmp_path):
@@ -98,3 +98,98 @@ def test_load_state_uses_injected_now(tmp_path):
     add_usage(tmp_path, "roblox", 12, window_id="after_school", now=when)
     assert load_state(tmp_path, "roblox", now=when)["date"] == "2024-01-15"
     assert (tmp_path / "roblox" / "2024-01-15.json").exists()
+
+
+def test_watch_history_keeps_sequence_and_collapses_consecutive_same_id(tmp_path):
+    a = {
+        "id": "aaaaaaaaaaa",
+        "title": "First",
+        "channel": "Channel A",
+        "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+    }
+    b = {
+        "id": "bbbbbbbbbbb",
+        "title": "Second",
+        "channel": "Channel B",
+        "url": "https://www.youtube.com/watch?v=bbbbbbbbbbb",
+    }
+    t0 = datetime(2024, 1, 15, 16, 30, 0)
+    t1 = datetime(2024, 1, 15, 16, 30, 15)
+    t2 = datetime(2024, 1, 15, 16, 30, 30)
+    t3 = datetime(2024, 1, 15, 16, 30, 45)
+
+    add_usage(tmp_path, "youtube", 15, window_id="evening", now=t0, video=a)
+    add_usage(tmp_path, "youtube", 15, window_id="evening", now=t1, video=a)
+    add_usage(tmp_path, "youtube", 15, window_id="evening", now=t2, video=b)
+    add_usage(tmp_path, "youtube", 15, window_id="evening", now=t3, video=a)
+
+    state = load_state(tmp_path, "youtube", now=t0)
+    assert [item["id"] for item in state["videos"]] == ["aaaaaaaaaaa", "bbbbbbbbbbb", "aaaaaaaaaaa"]
+    assert state["videos"][0]["usage_seconds"] == 30
+    assert state["videos"][0]["first_seen"] == "16:30:00"
+    assert state["videos"][0]["last_seen"] == "16:30:15"
+    assert state["videos"][1]["usage_seconds"] == 15
+    assert state["videos"][2]["usage_seconds"] == 15
+    assert state["videos"][2]["first_seen"] == "16:30:45"
+    assert [item["channel"] for item in state["videos"]] == ["Channel A", "Channel B", "Channel A"]
+
+
+def test_watch_history_fills_channel_on_later_poll(tmp_path):
+    when = datetime(2024, 1, 15, 16, 30)
+    add_usage(
+        tmp_path,
+        "youtube",
+        15,
+        window_id="evening",
+        now=when,
+        video={"id": "aaaaaaaaaaa", "title": "First", "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa"},
+    )
+    add_usage(
+        tmp_path,
+        "youtube",
+        15,
+        window_id="evening",
+        now=datetime(2024, 1, 15, 16, 30, 15),
+        video={
+            "id": "aaaaaaaaaaa",
+            "title": "First",
+            "channel": "Channel A",
+            "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+        },
+    )
+    assert load_state(tmp_path, "youtube", now=when)["videos"][0]["channel"] == "Channel A"
+
+
+def test_note_video_appends_blocked_video_without_usage(tmp_path):
+    when = datetime(2024, 1, 15, 19, 0)
+    note_video(
+        tmp_path,
+        "youtube",
+        {"id": "blockedvideo1", "title": "Nope", "url": "https://www.youtube.com/watch?v=blockedvideo1"},
+        now=when,
+    )
+    state = load_state(tmp_path, "youtube", now=when)
+    assert state["total_usage_seconds"] == 0
+    assert [item["id"] for item in state["videos"]] == ["blockedvideo1"]
+    assert state["videos"][0]["usage_seconds"] == 0
+
+
+def test_load_state_preserves_duplicate_ids_in_watch_history(tmp_path):
+    path = tmp_path / "youtube" / f"{date.today().isoformat()}.json"
+    path.parent.mkdir()
+    path.write_text(
+        json.dumps(
+            {
+                "total_usage_seconds": 30,
+                "videos": [
+                    {"id": "aaaaaaaaaaa", "title": "First", "usage_seconds": 15},
+                    {"id": "bbbbbbbbbbb", "title": "Second", "usage_seconds": 15},
+                    {"id": "aaaaaaaaaaa", "title": "First again", "usage_seconds": 15},
+                    {"id": ""},
+                ],
+            }
+        )
+    )
+    state = load_state(tmp_path, "youtube")
+    assert [item["id"] for item in state["videos"]] == ["aaaaaaaaaaa", "bbbbbbbbbbb", "aaaaaaaaaaa"]
+    assert state["videos"][2]["title"] == "First again"
