@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import subprocess
+from collections import OrderedDict
 from urllib.error import URLError
 from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import Request, urlopen
@@ -10,7 +11,8 @@ DEFAULT_URL_CONTAINS = ("youtube.com/", "youtu.be/")
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,20}$")
 TITLE_SUFFIX = " - YouTube"
 OEMBED_URL = "https://www.youtube.com/oembed?format=json&url="
-_metadata_cache = {}
+METADATA_CACHE_SIZE = 20
+_metadata_cache = OrderedDict()
 
 
 def _patterns(resource, key, default):
@@ -135,12 +137,23 @@ def fetch_oembed(url):
 
 
 def lookup_metadata(video_id):
+    """Return cached title/channel, fetching oEmbed only on a cache miss.
+
+    Keeps the last METADATA_CACHE_SIZE successful lookups so a video watched
+    across 15-second polls does not hit YouTube again. Failed fetches are not
+    cached, so the next poll can retry.
+    """
     if not video_id:
         return None
     if video_id in _metadata_cache:
+        _metadata_cache.move_to_end(video_id)
         return _metadata_cache[video_id]
     result = fetch_oembed(f"https://www.youtube.com/watch?v={video_id}")
+    if result is None:
+        return None
     _metadata_cache[video_id] = result
+    while len(_metadata_cache) > METADATA_CACHE_SIZE:
+        _metadata_cache.popitem(last=False)
     return result
 
 

@@ -22,7 +22,7 @@ Optional `display_name` is used in notification text; otherwise the resource id 
 
 Usage is stored per calendar day, per resource, with totals and per-window counters keyed by window id. Changing a window's times does not reset its usage.
 
-YouTube watch and Shorts keep a `videos` list in that day's state in the exact order videos were on the front tab. Each row has video id, title, channel, canonical URL, first/last seen time, and seconds. Channel name comes from YouTube's public oEmbed API (no key). `./scripts/watched.sh` prints today's history.
+YouTube watch and Shorts keep a `videos` list in that day's state in the exact order videos were on the front tab. Each row has video id, title, channel, canonical URL, first/last seen time, and seconds. Channel name comes from YouTube's public oEmbed API (no key). The last 20 successful lookups are cached in memory so a video watched across 15-second polls does not refetch. `./scripts/watched.sh` prints today's history.
 
 Invalid configs are rejected. The controller keeps running on the last valid config.
 

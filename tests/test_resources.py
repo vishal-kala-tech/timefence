@@ -242,3 +242,49 @@ def test_lookup_metadata_uses_oembed(monkeypatch):
     )
     meta = youtube.lookup_metadata("dQw4w9WgXcQ")
     assert meta["channel"] == "Rick Astley"
+
+
+def test_lookup_metadata_reuses_cached_video(monkeypatch):
+    monkeypatch.setattr(youtube, "lookup_metadata", _real_lookup_metadata)
+    calls = []
+
+    def fake_fetch(url):
+        calls.append(url)
+        return {"title": "Song", "channel": "Rick Astley"}
+
+    monkeypatch.setattr(youtube, "fetch_oembed", fake_fetch)
+    first = youtube.lookup_metadata("dQw4w9WgXcQ")
+    second = youtube.lookup_metadata("dQw4w9WgXcQ")
+    assert first == second
+    assert first["channel"] == "Rick Astley"
+    assert len(calls) == 1
+
+
+def test_lookup_metadata_evicts_oldest_when_full(monkeypatch):
+    monkeypatch.setattr(youtube, "lookup_metadata", _real_lookup_metadata)
+    calls = []
+
+    def fake_fetch(url):
+        calls.append(url)
+        video_id = url.rsplit("v=", 1)[-1]
+        return {"title": video_id, "channel": "Ch"}
+
+    monkeypatch.setattr(youtube, "fetch_oembed", fake_fetch)
+    size = youtube.METADATA_CACHE_SIZE
+    ids = [f"video{i:02d}aaaaaa" for i in range(size + 1)]
+    for video_id in ids:
+        youtube.lookup_metadata(video_id)
+
+    assert len(calls) == size + 1
+    youtube.lookup_metadata(ids[1])
+    assert len(calls) == size + 1
+    youtube.lookup_metadata(ids[0])
+    assert len(calls) == size + 2
+
+
+def test_lookup_metadata_retries_failed_fetch(monkeypatch):
+    monkeypatch.setattr(youtube, "lookup_metadata", _real_lookup_metadata)
+    results = [None, {"title": "Song", "channel": "Rick Astley"}]
+    monkeypatch.setattr(youtube, "fetch_oembed", lambda _url: results.pop(0))
+    assert youtube.lookup_metadata("dQw4w9WgXcQ") is None
+    assert youtube.lookup_metadata("dQw4w9WgXcQ")["channel"] == "Rick Astley"
