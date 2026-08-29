@@ -31,6 +31,12 @@
     <key>KeepAlive</key>
     <true/>
 
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+
     <key>ThrottleInterval</key>
     <integer>10</integer>
 

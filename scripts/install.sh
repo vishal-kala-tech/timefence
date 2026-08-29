@@ -67,12 +67,14 @@ fi
 
 echo "Building $APP/TimeFenceNotifier.app"
 rm -rf "$APP/TimeFenceNotifier.app"
-osacompile -o "$APP/TimeFenceNotifier.app" "$SRC/launchd/notify.applescript"
-INFO="$APP/TimeFenceNotifier.app/Contents/Info.plist"
-plutil -replace LSUIElement -bool true "$INFO"
-plutil -replace CFBundleName -string "TimeFence" "$INFO"
-plutil -replace CFBundleIdentifier -string "com.user.timefence.notify" "$INFO"
-plutil -replace NSUserNotificationAlertStyle -string "alert" "$INFO"
+NOTIFIER="$APP/TimeFenceNotifier.app"
+mkdir -p "$NOTIFIER/Contents/MacOS" "$NOTIFIER/Contents/Resources"
+cp "$SRC/launchd/TimeFenceNotifier.plist" "$NOTIFIER/Contents/Info.plist"
+cp "$SRC/launchd/TimeFenceNotifier.py" "$NOTIFIER/Contents/Resources/TimeFenceNotifier.py"
+cp "$SRC/launchd/TimeFenceNotifier.sh" "$NOTIFIER/Contents/MacOS/TimeFenceNotifier"
+printf '%s\n' "$PY" > "$NOTIFIER/Contents/Resources/python.path"
+chmod +x "$NOTIFIER/Contents/MacOS/TimeFenceNotifier"
+xattr -dr com.apple.quarantine "$NOTIFIER" 2>/dev/null || true
 
 echo "Writing $PL from $TEMPLATE"
 sed -e "s|__APP_DIR__|$APP|g" -e "s|__LOG_DIR__|$LOG|g" -e "s|__PYTHON__|$PY|g" "$TEMPLATE" > "$PL"

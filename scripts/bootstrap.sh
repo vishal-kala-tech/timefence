@@ -49,7 +49,18 @@ install_python_from_python_org() {
         rm -rf "$tmp"
         exit 1
     fi
-    echo "Installing Python $PYTHON_VERSION (administrator password required)"
+    echo "Installing Python $PYTHON_VERSION for all users on this Mac."
+    echo "macOS will ask for the login password of this account:"
+    echo "  user:  $(id -un)"
+    echo "  (This is the same password you use to unlock the Mac.)"
+    if ! id -Gn | tr ' ' '\n' | grep -qx admin; then
+        echo "This account is not an administrator, so the password will be rejected." >&2
+        echo "Sign in as an admin user (often a parent account), or run:" >&2
+        echo "  su ADMIN_USERNAME" >&2
+        echo "  $SCRIPT_DIR/bootstrap.sh" >&2
+        rm -rf "$tmp"
+        exit 1
+    fi
     sudo installer -pkg "$pkg" -target /
     rm -rf "$tmp"
     hash -r 2>/dev/null || true

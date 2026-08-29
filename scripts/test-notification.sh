@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Show a test TimeFence dialog without waiting for usage limits.
+# Run this while logged in as the child (the same account the agent uses).
 # Uses this repo's Python package when run from the project, so you do not
 # need to reinstall just to try a notification change.
 
@@ -19,6 +20,16 @@ fi
 
 export TIME_FENCE_HOME="${TIME_FENCE_HOME:-$APP}"
 
+echo "TIME_FENCE_HOME=$TIME_FENCE_HOME"
+if [ -x "$TIME_FENCE_HOME/TimeFenceNotifier.app/Contents/MacOS/TimeFenceNotifier" ]; then
+    echo "Notifier app: $TIME_FENCE_HOME/TimeFenceNotifier.app"
+elif [ -x "$TIME_FENCE_HOME/TimeFenceNotifier.app/Contents/MacOS/applet" ]; then
+    echo "Notifier app: $TIME_FENCE_HOME/TimeFenceNotifier.app (legacy applet; reinstall)"
+else
+    echo "Notifier app: not installed (System Events dialog only)"
+fi
+echo "Notifier log: $HOME/Library/Logs/TimeFence/notifier.log"
+
 python3 - "$1" <<'PY'
 import logging
 import sys
@@ -27,10 +38,10 @@ import timefence.notifications as n
 logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 print("module:", n.__file__)
 if sys.argv[1] == "--countdown":
-    print("Showing 6-second block countdown, then exiting.")
+    print("Showing a 6-second block dialog, then exiting.")
     ok = n.show_block_countdown("TimeFence", "YouTube has no time remaining today.")
 else:
-    print("Showing 6-second warning countdown in the background.")
+    print("Showing a 6-second warning dialog.")
     ok = n.show_notification("TimeFence", "Test notification from TimeFence.")
 print("sent" if ok else "failed")
 raise SystemExit(0 if ok else 1)

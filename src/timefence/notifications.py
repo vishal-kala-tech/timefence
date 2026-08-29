@@ -1,8 +1,13 @@
 import json
 import logging
+import os
 import subprocess
+import tempfile
+from pathlib import Path
 
 BLOCK_COUNTDOWN_SECONDS = 6
+OPEN = "/usr/bin/open"
+OSASCRIPT = "/usr/bin/osascript"
 
 
 def _ping():
@@ -16,99 +21,137 @@ def _ping():
         pass
 
 
+def _applescript_string(value: str) -> str:
+    parts = str(value).split("\n")
+    quoted = []
+    for part in parts:
+        quoted.append('"' + part.replace("\\", "\\\\").replace('"', '\\"') + '"')
+    return " & return & ".join(quoted)
+
+
 def overlay_script(title: str, message: str, seconds: int = BLOCK_COUNTDOWN_SECONDS) -> str:
-    """One floating window whose label counts down. No buttons; it cannot be cancelled."""
+    """Static System Events dialog used only if the countdown helper app fails."""
     seconds = max(1, int(seconds))
-    return f'''
-ObjC.import("Cocoa");
-
-const title = {json.dumps(title)};
-const body = {json.dumps(message)};
-const seconds = {seconds};
-
-const app = $.NSApplication.sharedApplication;
-app.setActivationPolicy($.NSApplicationActivationPolicyAccessory);
-
-const win = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer(
-    $.NSMakeRect(0, 0, 420, 170),
-    $.NSWindowStyleMaskTitled,
-    $.NSBackingStoreBuffered,
-    false
-);
-win.title = title;
-win.level = $.NSStatusWindowLevel;
-win.releasedWhenClosed = true;
-try {{
-    win.standardWindowButton($.NSWindowCloseButton).hidden = true;
-    win.standardWindowButton($.NSWindowMiniaturizeButton).hidden = true;
-    win.standardWindowButton($.NSWindowZoomButton).hidden = true;
-}} catch (e) {{}}
-
-const label = $.NSTextField.alloc.initWithFrame($.NSMakeRect(20, 16, 380, 120));
-label.bezeled = false;
-label.drawsBackground = false;
-label.editable = false;
-label.selectable = false;
-label.alignment = $.NSTextAlignmentCenter;
-label.font = $.NSFont.systemFontOfSize(16);
-try {{
-    label.cell.wraps = true;
-}} catch (e) {{}}
-win.contentView.addSubview(label);
-win.center;
-win.makeKeyAndOrderFront(app);
-app.activateIgnoringOtherApps(true);
-
-for (let remaining = seconds; remaining >= 1; remaining--) {{
-    label.stringValue = body + "\\n\\n" + remaining;
-    win.displayIfNeeded;
-    $.NSRunLoop.currentRunLoop.runUntilDate($.NSDate.dateWithTimeIntervalSinceNow(1));
-}}
-
-win.orderOut(app);
-win.close;
-'''
+    body = f"{message}\n\nThis closes in {seconds} seconds."
+    return (
+        'tell application "System Events"\n'
+        f"    display dialog {_applescript_string(body)} with title {_applescript_string(title)} "
+        f'buttons {{"OK"}} default button "OK" giving up after {seconds}\n'
+        "end tell\n"
+    )
 
 
 block_countdown_script = overlay_script
 
 
+def _notifier_app():
+    home = Path(
+        os.environ.get(
+            "TIME_FENCE_HOME",
+            Path.home() / "Library/Application Support/TimeFence",
+        )
+    )
+    app = home / "TimeFenceNotifier.app"
+    macos = app / "Contents/MacOS"
+    if not macos.is_dir():
+        return None
+    if (macos / "TimeFenceNotifier").exists() or (macos / "applet").exists():
+        return app
+    return None
+
+
+def _payload_file(title: str, message: str, seconds: int) -> Path:
+    folder = Path(tempfile.mkdtemp(prefix="timefence-notify-"))
+    path = folder / "payload.json"
+    path.write_text(
+        json.dumps({"title": title, "message": message, "seconds": seconds}),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _run_notifier_app(app: Path, title: str, message: str, seconds: int, *, wait: bool) -> bool:
+    payload = _payload_file(title, message, seconds)
+    cmd = [OPEN]
+    if wait:
+        cmd.append("-W")
+    cmd.extend(["-n", "-a", str(app), "--args", str(payload)])
+    logging.info("Showing countdown popup via %s", app)
+    if wait:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=seconds + 8,
+            check=False,
+        )
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or "").strip()
+            logging.error(
+                "Countdown helper failed: %s", err or f"open exit {result.returncode}"
+            )
+            return False
+        return True
+    subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    return True
+
+
+def _run_system_events_dialog(title: str, message: str, seconds: int, *, wait: bool) -> bool:
+    script = overlay_script(title, message, seconds)
+    logging.info("Showing static popup via System Events")
+    if wait:
+        result = subprocess.run(
+            [OSASCRIPT, "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=seconds + 8,
+            check=False,
+        )
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or "").strip()
+            logging.error(
+                "Popup failed: %s", err or f"osascript exit {result.returncode}"
+            )
+            return False
+        return True
+
+    proc = subprocess.Popen(
+        [OSASCRIPT, "-e", script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+        text=True,
+    )
+    try:
+        proc.wait(timeout=0.5)
+    except subprocess.TimeoutExpired:
+        return True
+    if proc.returncode == 0:
+        return True
+    err = (proc.stderr.read() if proc.stderr else "") or ""
+    logging.error(
+        "Popup failed: %s",
+        err.strip() or f"osascript exit {proc.returncode}",
+    )
+    return False
+
+
 def _run_overlay(title: str, message: str, seconds: int, *, wait: bool) -> bool:
     seconds = max(1, int(seconds))
-    script = overlay_script(title, message, seconds)
     _ping()
     try:
-        if wait:
-            result = subprocess.run(
-                ["osascript", "-l", "JavaScript"],
-                input=script,
-                text=True,
-                capture_output=True,
-                timeout=seconds + 8,
-                check=False,
-            )
-            if result.returncode != 0:
-                err = (result.stderr or result.stdout or "").strip()
-                logging.error(
-                    "Overlay failed: %s", err or f"osascript exit {result.returncode}"
-                )
-                return False
+        app = _notifier_app()
+        if app is not None and _run_notifier_app(app, title, message, seconds, wait=wait):
             return True
-
-        proc = subprocess.Popen(
-            ["osascript", "-l", "JavaScript"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-            text=True,
-        )
-        proc.stdin.write(script)
-        proc.stdin.close()
+        return _run_system_events_dialog(title, message, seconds, wait=wait)
     except Exception:
-        logging.exception("Overlay failed")
+        logging.exception("Popup failed")
         return False
-    return True
 
 
 def show_notification(title: str, message: str, seconds: int = BLOCK_COUNTDOWN_SECONDS) -> bool:
