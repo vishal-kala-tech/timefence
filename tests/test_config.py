@@ -20,6 +20,7 @@ def test_load_config_accepts_shipped_rules():
     assert set(cfg["resources"]) >= {"roblox", "youtube", "youtube_shorts"}
     assert "youtube.com/watch" in cfg["resources"]["youtube"]["url_contains"]
     assert cfg["resources"]["youtube_shorts"]["url_contains"] == ["youtube.com/shorts"]
+    assert cfg.get("log_browsing") is True
     roblox_windows = cfg["resources"]["roblox"]["policy"]["default"]["allowed_windows"]
     assert [window["id"] for window in roblox_windows] == ["after_school", "evening"]
 
@@ -174,3 +175,9 @@ def test_allows_warning_minutes_when_no_limit_exists():
         }
     )
     assert validate_config(cfg)["resources"]["roblox"]["policy"]["default"]["warning_minutes"] == [10, 5]
+
+
+def test_rejects_non_boolean_log_browsing():
+    cfg = make_config(log_browsing="yes")
+    with pytest.raises(ValueError, match="log_browsing must be a boolean"):
+        validate_config(cfg)

@@ -157,6 +157,9 @@ def validate_config(cfg):
     if isinstance(interval, bool) or not isinstance(interval, (int, float)) or interval < 1:
         raise ValueError("check_interval_seconds must be a positive number")
 
+    if "log_browsing" in cfg and not isinstance(cfg.get("log_browsing"), bool):
+        raise ValueError("log_browsing must be a boolean")
+
     for name, resource in resources.items():
         validate_resource(name, resource)
 

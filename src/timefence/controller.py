@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from . import browse
 from .config import load_config
 from .notifications import show_block_countdown, show_notification
 from .policy import (
@@ -168,6 +169,13 @@ def _block_countdown_message(label, reason):
     return f"{label} has no time remaining today."
 
 
+def _log_browse(state_dir, interval, now):
+    page = browse.inspect()
+    if not page:
+        return
+    browse.note_visit(state_dir, page, interval, now=now)
+
+
 def _tick_resource(name, resource, state_dir, interval, now):
     if not resource.get("enabled"):
         return
@@ -258,6 +266,11 @@ def run(app_dir: Path):
                 last_revision = cfg.get("revision")
 
             now = _now()
+            if cfg.get("log_browsing", True):
+                try:
+                    _log_browse(state_dir, interval, now)
+                except Exception:
+                    logging.exception("Browse log failed")
             for name, resource in cfg["resources"].items():
                 try:
                     _tick_resource(name, resource, state_dir, interval, now)

@@ -1,0 +1,200 @@
+import json
+import logging
+import subprocess
+from pathlib import Path
+from urllib.parse import urlparse, urlunparse
+
+from .usage import _cell, _day, _timestamp
+
+MAX_VISITS = 5000
+BROWSE_RESOURCE = "browse"
+BROWSE_TABLE_FIELDS = (
+    "date",
+    "host",
+    "url",
+    "title",
+    "first_seen",
+    "last_seen",
+    "seconds",
+)
+INSPECT_SCRIPT = '''
+tell application "System Events"
+    set chromeFrontmost to false
+    if exists process "Google Chrome" then
+        set chromeFrontmost to frontmost of process "Google Chrome"
+    end if
+end tell
+
+if chromeFrontmost then
+    tell application "Google Chrome"
+        if (count of windows) > 0 then
+            set currentURL to URL of active tab of front window
+            set currentTitle to title of active tab of front window
+            return currentURL & linefeed & currentTitle
+        end if
+    end tell
+end if
+
+return ""
+'''
+
+
+def _clean_title(title):
+    text = (title or "").strip()
+    if text in ("missing value",):
+        return ""
+    return text
+
+
+def parse_page(url, title=""):
+    url = (url or "").strip()
+    if url in ("", "missing value", "NO", "YES"):
+        return None
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return None
+    host = (parsed.netloc or "").lower()
+    if not host:
+        return None
+    canonical = urlunparse(
+        (parsed.scheme, parsed.netloc, parsed.path or "/", parsed.params, parsed.query, "")
+    )
+    return {
+        "host": host,
+        "url": canonical,
+        "title": _clean_title(title),
+    }
+
+
+def inspect():
+    result = subprocess.run(
+        ["osascript", "-e", INSPECT_SCRIPT],
+        capture_output=True,
+        text=True,
+    )
+    raw = (result.stdout or "").strip()
+    if not raw:
+        return None
+    lines = raw.splitlines()
+    url = lines[0].strip() if lines else ""
+    title = lines[1] if len(lines) > 1 else ""
+    return parse_page(url, title)
+
+
+def browse_path(state_dir, now=None):
+    return Path(state_dir) / BROWSE_RESOURCE / f"{_day(now).isoformat()}.json"
+
+
+def browse_table_path(state_dir, now=None):
+    return Path(state_dir) / BROWSE_RESOURCE / f"{_day(now).isoformat()}.txt"
+
+
+def _visit_entry(payload):
+    if not isinstance(payload, dict):
+        return None
+    url = str(payload.get("url") or "").strip()
+    host = str(payload.get("host") or "").strip()
+    if not url or not host:
+        return None
+    return {
+        "host": host,
+        "url": url,
+        "title": str(payload.get("title") or ""),
+        "first_seen": str(payload.get("first_seen") or ""),
+        "last_seen": str(payload.get("last_seen") or ""),
+        "usage_seconds": int(payload.get("usage_seconds") or 0),
+    }
+
+
+def empty_browse_state(now=None):
+    return {"date": _day(now).isoformat(), "visits": []}
+
+
+def load_browse_state(state_dir, now=None):
+    path = browse_path(state_dir, now=now)
+    if not path.exists():
+        return empty_browse_state(now)
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError, TypeError) as exc:
+        logging.warning("Corrupt browse state (%s); resetting", exc)
+        return empty_browse_state(now)
+    visits = []
+    for item in data.get("visits") or []:
+        entry = _visit_entry(item)
+        if entry:
+            visits.append(entry)
+    return {"date": data.get("date") or _day(now).isoformat(), "visits": visits}
+
+
+def write_browse_table(state_dir, now=None):
+    day = _day(now).isoformat()
+    state = load_browse_state(state_dir, now=now)
+    rows = ["|".join(BROWSE_TABLE_FIELDS)]
+    for visit in state.get("visits") or []:
+        rows.append(
+            "|".join(
+                _cell(part)
+                for part in (
+                    day,
+                    visit.get("host") or "",
+                    visit.get("url") or "",
+                    visit.get("title") or "",
+                    visit.get("first_seen") or "",
+                    visit.get("last_seen") or "",
+                    int(visit.get("usage_seconds") or 0),
+                )
+            )
+        )
+    path = browse_table_path(state_dir, now=day)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return path
+
+
+def note_visit(state_dir, page, seconds, now=None):
+    if not isinstance(page, dict):
+        return None
+    url = str(page.get("url") or "").strip()
+    host = str(page.get("host") or "").strip()
+    if not url or not host:
+        return None
+    path = browse_path(state_dir, now=now)
+    state = load_browse_state(state_dir, now=now)
+    state["date"] = _day(now).isoformat()
+    ts = _timestamp(now)
+    title = str(page.get("title") or "")
+    visits = state.setdefault("visits", [])
+    if visits and visits[-1].get("url") == url:
+        last = visits[-1]
+        last["last_seen"] = ts
+        last["usage_seconds"] = int(last.get("usage_seconds") or 0) + int(seconds)
+        if title:
+            last["title"] = title
+        if host:
+            last["host"] = host
+    elif len(visits) >= MAX_VISITS:
+        logging.warning("Browse history full (%s); not adding %s", MAX_VISITS, url)
+    else:
+        visits.append(
+            {
+                "host": host,
+                "url": url,
+                "title": title,
+                "first_seen": ts,
+                "last_seen": ts,
+                "usage_seconds": int(seconds),
+            }
+        )
+        logging.info("Visited %s %s", host, title or url)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2))
+    tmp.replace(path)
+    try:
+        write_browse_table(state_dir, now=state.get("date"))
+    except Exception:
+        logging.exception("Browse table export failed")
+    return state

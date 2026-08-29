@@ -51,13 +51,16 @@ def make_resource(enabled=True, default=None, days=None, date_overrides=None, we
     return resource
 
 
-def make_config(resources=None, revision=1, check_interval_seconds=15, version=1):
-    return {
+def make_config(resources=None, revision=1, check_interval_seconds=15, version=1, log_browsing=None):
+    cfg = {
         "version": version,
         "revision": revision,
         "check_interval_seconds": check_interval_seconds,
         "resources": resources if resources is not None else {"roblox": make_resource()},
     }
+    if log_browsing is not None:
+        cfg["log_browsing"] = log_browsing
+    return cfg
 
 
 def write_rules(app_dir: Path, config: dict) -> Path:

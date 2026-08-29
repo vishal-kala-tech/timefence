@@ -244,3 +244,19 @@ def test_note_video_updates_usage_table(tmp_path):
     )
     lines = (tmp_path / "2024-01-15.txt").read_text(encoding="utf-8").splitlines()
     assert any(line.startswith("2024-01-15|youtube|video||0|blockedvideo1|") for line in lines)
+
+
+def test_usage_table_skips_browse_log(tmp_path):
+    when = datetime(2024, 1, 15, 16, 30)
+    add_usage(tmp_path, "roblox", 60, window_id="after_school", now=when)
+    from timefence import browse
+
+    browse.note_visit(
+        tmp_path,
+        {"host": "www.example.com", "url": "https://www.example.com/", "title": "Example"},
+        15,
+        now=when,
+    )
+    text = (tmp_path / "2024-01-15.txt").read_text(encoding="utf-8")
+    assert "www.example.com" not in text
+    assert "|browse|" not in text

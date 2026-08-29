@@ -31,6 +31,11 @@ def skip_block_countdown(monkeypatch):
     monkeypatch.setattr(controller, "show_block_countdown", lambda *args, **kwargs: True)
 
 
+@pytest.fixture(autouse=True)
+def skip_browse_inspect(monkeypatch):
+    monkeypatch.setattr(controller.browse, "inspect", lambda: None)
+
+
 def stop_after(n=1):
     slept = []
 
@@ -663,3 +668,40 @@ def test_notification_failure_still_records_usage(app_dir, monkeypatch):
     modules["roblox"].enforce.assert_not_called()
     assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 45 * 60 - 10 * 60 - 8 + 15
     assert load_state(app_dir / "state", "roblox", now=MONDAY_AFTERNOON)["warnings_sent"] == []
+
+
+def test_browse_log_records_front_tab(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    install_modules(monkeypatch, roblox=False)
+    monkeypatch.setattr(
+        controller.browse,
+        "inspect",
+        lambda: {
+            "host": "www.example.com",
+            "url": "https://www.example.com/page",
+            "title": "Example",
+        },
+    )
+    write_rules(app_dir, make_config(log_browsing=True))
+
+    run_cycles(app_dir, monkeypatch)
+
+    from timefence.browse import load_browse_state
+
+    state = load_browse_state(app_dir / "state", now=MONDAY_AFTERNOON)
+    assert state["visits"][0]["host"] == "www.example.com"
+    assert state["visits"][0]["usage_seconds"] == 15
+    assert (app_dir / "state" / "browse" / "2024-01-15.txt").exists()
+
+
+def test_browse_log_can_be_disabled(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    install_modules(monkeypatch, roblox=False)
+    inspect = MagicMock(return_value={"host": "www.example.com", "url": "https://www.example.com/", "title": "X"})
+    monkeypatch.setattr(controller.browse, "inspect", inspect)
+    write_rules(app_dir, make_config(log_browsing=False))
+
+    run_cycles(app_dir, monkeypatch)
+
+    inspect.assert_not_called()
+    assert not (app_dir / "state" / "browse").exists()

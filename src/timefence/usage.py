@@ -69,6 +69,8 @@ def write_usage_table(state_dir, now=None):
     rows = ["|".join(USAGE_TABLE_FIELDS)]
     for json_path in sorted(state_dir.glob(f"*/{day}.json")):
         resource = json_path.parent.name
+        if resource == "browse":
+            continue
         state = load_state(state_dir, resource, now=day)
         rows.append(_usage_row(day, resource, "daily", seconds=state.get("total_usage_seconds", 0)))
         for window_id, payload in sorted((state.get("windows") or {}).items()):
