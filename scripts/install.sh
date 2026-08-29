@@ -54,6 +54,15 @@ else
     cp "$SRC/config/rules.json" "$RULES"
 fi
 
+echo "Building $APP/TimeFenceNotifier.app"
+rm -rf "$APP/TimeFenceNotifier.app"
+osacompile -o "$APP/TimeFenceNotifier.app" "$SRC/launchd/notify.applescript"
+INFO="$APP/TimeFenceNotifier.app/Contents/Info.plist"
+plutil -replace LSUIElement -bool true "$INFO"
+plutil -replace CFBundleName -string "TimeFence" "$INFO"
+plutil -replace CFBundleIdentifier -string "com.user.timefence.notify" "$INFO"
+plutil -replace NSUserNotificationAlertStyle -string "alert" "$INFO"
+
 echo "Writing $PL from $TEMPLATE"
 sed -e "s|__APP_DIR__|$APP|g" -e "s|__LOG_DIR__|$LOG|g" -e "s|__PYTHON__|$PY|g" "$TEMPLATE" > "$PL"
 
@@ -70,6 +79,7 @@ launchctl bootstrap gui/$(id -u) "$PL"
 
 echo "Installed TimeFence"
 echo "  rules:           $RULES"
+echo "  notifier:        $APP/TimeFenceNotifier.app"
 echo "  shortcuts:       $SRC/shortcuts"
 echo "  install log:     $SETUP_LOG"
 echo "  stdout log:      $LOG/timefence.out.log"

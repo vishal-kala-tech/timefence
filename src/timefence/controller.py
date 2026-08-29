@@ -5,7 +5,16 @@ from pathlib import Path
 
 from .config import load_config
 from .notifications import show_notification
-from .policy import due_warnings, evaluate, limit_seconds, limit_label, resolve_policy, resource_label
+from .policy import (
+    DAY_NAMES,
+    due_warnings,
+    evaluate,
+    limit_seconds,
+    limit_label,
+    resolve_policy,
+    resource_label,
+    warning_dialog_message,
+)
 from .resources import roblox, youtube
 from .usage import add_usage, load_state, mark_warning_sent
 
@@ -14,6 +23,32 @@ MODULES = {"roblox": roblox, "youtube": youtube}
 
 def _now():
     return datetime.now()
+
+
+def _window_summary(policy):
+    windows = policy.get("allowed_windows") or []
+    if not windows:
+        return "none"
+    return ",".join(
+        f"{window.get('id', '?')}={window.get('start')}-{window.get('end')}"
+        for window in windows
+    )
+
+
+def _block_fields(policy, state, decision, now):
+    parts = [
+        f"now={now.strftime('%H:%M')}",
+        f"day={DAY_NAMES[now.weekday()]}",
+        f"windows={_window_summary(policy)}",
+        _usage_fields(policy, state, decision.window),
+    ]
+    if decision.reason == "outside_window":
+        parts.append("not in any allowed window")
+    elif decision.reason == "daily_limit":
+        parts.append("daily usage cap reached")
+    elif decision.reason == "window_limit":
+        parts.append("window usage cap reached")
+    return " ".join(parts)
 
 
 def _usage_fields(policy, state, window=None):
@@ -36,16 +71,22 @@ def _usage_fields(policy, state, window=None):
 
 def _emit_warnings(name, resource, policy, state, window, state_dir, now):
     label = resource_label(name, resource)
-    for warning in due_warnings(policy, state, window=window, label=label):
-        try:
-            sent = show_notification("TimeFence", warning.message)
-        except Exception:
-            logging.exception("Notification failed for %s", name)
-            continue
-        if not sent:
-            continue
+    warnings = due_warnings(policy, state, window=window, label=label)
+    if not warnings:
+        return
+
+    message = warning_dialog_message(warnings, label=label)
+    try:
+        sent = show_notification("TimeFence", message)
+    except Exception:
+        logging.exception("Notification failed for %s", name)
+        return
+    if not sent:
+        return
+
+    for warning in warnings:
         mark_warning_sent(state_dir, name, warning, now=now)
-        logging.info("Warned %s: %s", name, warning.message)
+    logging.info("Warned %s: %s", name, message)
 
 
 def _tick_resource(name, resource, state_dir, interval, now):
@@ -66,7 +107,7 @@ def _tick_resource(name, resource, state_dir, interval, now):
             "Blocking %s: %s %s",
             name,
             decision.reason,
-            _usage_fields(policy, state, decision.window),
+            _block_fields(policy, state, decision, now),
         )
         mod.enforce(resource)
         return

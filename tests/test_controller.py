@@ -336,6 +336,47 @@ def test_daily_warning_fires_once_when_threshold_crossed(app_dir, monkeypatch):
     assert state["warnings_sent"] == ["daily:10"]
 
 
+def test_daily_and_window_warning_share_one_dialog(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    notify = MagicMock(return_value=True)
+    monkeypatch.setattr(controller, "show_notification", notify)
+    install_modules(monkeypatch, roblox=True)
+    write_rules(
+        app_dir,
+        make_config(
+            resources={
+                "roblox": make_resource(
+                    display_name="Roblox",
+                    default=make_day_policy(
+                        daily_limit_minutes=3,
+                        warning_minutes=[2, 1],
+                        allowed_windows=[
+                            make_window(
+                                "evening",
+                                "00:00",
+                                "24:00",
+                                limit_minutes=3,
+                                warning_minutes=[2, 1],
+                            )
+                        ],
+                    ),
+                )
+            }
+        ),
+    )
+    add_usage(app_dir / "state", "roblox", 60, window_id="evening", now=MONDAY_AFTERNOON)
+
+    run_cycles(app_dir, monkeypatch)
+
+    assert notify.call_count == 1
+    assert notify.call_args.args[1] == (
+        "Roblox has 2 minutes remaining today, including the evening window."
+    )
+    state = load_state(app_dir / "state", "roblox", now=MONDAY_AFTERNOON)
+    assert "daily:2" in state["warnings_sent"]
+    assert "2" in state["windows"]["evening"]["warnings_sent"]
+
+
 def test_notification_failure_does_not_affect_enforcement(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
     monkeypatch.setattr(controller, "show_notification", MagicMock(side_effect=RuntimeError("osascript failed")))

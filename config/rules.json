@@ -95,15 +95,15 @@
       "browser": "chrome",
       "policy": {
         "default": {
-          "daily_limit_minutes": 30,
-          "warning_minutes": [10, 5, 1],
+          "daily_limit_minutes": 3,
+          "warning_minutes": [2, 1],
           "allowed_windows": [
             {
               "id": "evening",
               "start": "17:00",
-              "end": "19:00",
+              "end": "23:00",
               "limit_minutes": 30,
-              "warning_minutes": [5, 1]
+              "warning_minutes": [2, 1]
             }
           ]
         },

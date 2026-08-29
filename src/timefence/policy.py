@@ -144,6 +144,25 @@ def due_warnings(policy, state, window=None, label="resource"):
     return due
 
 
+def warning_dialog_message(warnings, label="resource"):
+    """One dialog for a batch of due warnings so daily + window do not stack."""
+    if not warnings:
+        return ""
+    if len(warnings) == 1:
+        return warnings[0].message
+
+    most_urgent = min(warnings, key=lambda item: float(item.minutes))
+    same = [item for item in warnings if float(item.minutes) == float(most_urgent.minutes)]
+    amount = _minutes_text(most_urgent.minutes)
+    window_ids = [item.window_id for item in same if item.window_id]
+    has_daily = any(item.window_id is None for item in same)
+    if has_daily and window_ids:
+        return f"{label} has {amount} remaining today, including the {window_ids[0]} window."
+    if window_ids and not has_daily:
+        return f"{label} has {amount} remaining in the {window_ids[0]} window."
+    return most_urgent.message
+
+
 def resolve_policy(resource, now=None):
     now = now or datetime.now()
     policy = resource.get("policy") or {}

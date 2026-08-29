@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from timefence.policy import due_warnings
+from timefence.policy import due_warnings, warning_dialog_message
 from timefence.usage import add_usage, load_state, mark_warning_sent
 
 DAILY = {
@@ -140,3 +140,17 @@ def test_new_day_resets_warning_state(tmp_path):
     state = load_state(tmp_path, "roblox", now=today)
     assert state["warnings_sent"] == []
     assert state["windows"]["after_school"]["warnings_sent"] == []
+
+
+def test_warning_dialog_combines_daily_and_window_at_same_remaining():
+    state = {
+        "total_usage_seconds": 44 * 60,
+        "warnings_sent": [],
+        "windows": {"after_school": {"usage_seconds": 29 * 60, "warnings_sent": []}},
+    }
+    due = due_warnings(DAILY, state, window=AFTER_SCHOOL, label="YouTube")
+    assert "daily:1" in keys(due)
+    assert "1" in keys(due)
+    assert warning_dialog_message(due, label="YouTube") == (
+        "YouTube has 1 minute remaining today, including the after_school window."
+    )
