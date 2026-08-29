@@ -5,11 +5,22 @@ set -e
 
 # Resolve project source directory and installation paths.
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib-python.sh
+. "$SCRIPT_DIR/lib-python.sh"
 APP="$HOME/Library/Application Support/TimeFence"
 LOG="$HOME/Library/Logs/TimeFence"
 AGENTS="$HOME/Library/LaunchAgents"
 PL="$AGENTS/com.user.timefence.plist"
-PY="$(command -v python3)"
+if [ -n "${TIMEFENCE_PYTHON:-}" ] && timefence_python_ok "$TIMEFENCE_PYTHON"; then
+    PY="$TIMEFENCE_PYTHON"
+elif PY="$(timefence_find_python)"; then
+    :
+else
+    echo "Python 3.10 or newer is required and was not found." >&2
+    echo "On a Mac with no Python, run: $SCRIPT_DIR/bootstrap.sh" >&2
+    exit 1
+fi
 RULES="$APP/config/rules.json"
 EXAMPLE="$APP/config/rules.example.json"
 TEMPLATE="$SRC/launchd/com.user.timefence.plist.template"

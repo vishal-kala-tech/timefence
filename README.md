@@ -32,9 +32,20 @@ Invalid configs are rejected. The controller keeps running on the last valid con
 Edit `config/rules.json`. The controller reloads it every cycle, so an eventual API/sync agent can atomically replace this file after validating a downloaded config. `revision` makes remote changes easy to identify.
 
 ## Install
+On a Mac that already has Python 3.10+:
+
 `./scripts/install.sh`
 
-Runtime files are installed under `~/Library/Application Support/TimeFence`, logs under `~/Library/Logs/TimeFence`, and the LaunchAgent under `~/Library/LaunchAgents`.
+On a Mac with no Python (from-scratch): copy this TimeFence folder onto the Mac, then:
+
+```bash
+cd timefence
+./scripts/bootstrap.sh
+```
+
+That installs Python 3.13 from python.org if needed (administrator password), then runs `install.sh`. Internet is required for the Python download. Homebrew is used instead when `brew` is already present.
+
+Runtime files are installed under `~/Library/Application Support/TimeFence`, logs under `~/Library/Logs/TimeFence`, and the LaunchAgent under `~/Library/LaunchAgents`. Keep the TimeFence project folder so helper scripts (`budget.sh`, `activity.sh`, `status.sh`) remain available.
 
 ## Current resources
 - Roblox: counts time only while a matching app is frontmost; a background Roblox process does not use budget. Blocks still quit Roblox if it is running outside a window or over the limit.
