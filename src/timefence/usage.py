@@ -20,8 +20,32 @@ def empty_state(now=None):
     return {
         "date": _day(now).isoformat(),
         "total_usage_seconds": 0,
+        "warnings_sent": [],
         "windows": {},
     }
+
+
+def _warning_list(values):
+    if not isinstance(values, list):
+        return []
+    out = []
+    seen = set()
+    for item in values:
+        key = str(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
+
+
+def _window_state(payload):
+    if isinstance(payload, dict):
+        return {
+            "usage_seconds": int(payload.get("usage_seconds", 0) or 0),
+            "warnings_sent": _warning_list(payload.get("warnings_sent")),
+        }
+    return {"usage_seconds": int(payload or 0), "warnings_sent": []}
 
 
 def _normalize(data, now=None):
@@ -29,19 +53,12 @@ def _normalize(data, now=None):
         return empty_state(now)
     total = data.get("total_usage_seconds", data.get("usage_seconds", 0))
     windows = data.get("windows") if isinstance(data.get("windows"), dict) else {}
-    normalized = {
+    return {
         "date": data.get("date") or _day(now).isoformat(),
         "total_usage_seconds": int(total or 0),
-        "windows": {},
+        "warnings_sent": _warning_list(data.get("warnings_sent")),
+        "windows": {str(window_id): _window_state(payload) for window_id, payload in windows.items()},
     }
-    for window_id, payload in windows.items():
-        if isinstance(payload, dict):
-            normalized["windows"][str(window_id)] = {
-                "usage_seconds": int(payload.get("usage_seconds", 0) or 0)
-            }
-        else:
-            normalized["windows"][str(window_id)] = {"usage_seconds": int(payload or 0)}
-    return normalized
 
 
 def load_state(state_dir, resource, now=None):
@@ -75,7 +92,26 @@ def add_usage(state_dir, resource, seconds, window_id=None, now=None):
     state["date"] = _day(now).isoformat()
     state["total_usage_seconds"] = int(state["total_usage_seconds"]) + int(seconds)
     if window_id:
-        window = state["windows"].setdefault(window_id, {"usage_seconds": 0})
+        window = state["windows"].setdefault(window_id, {"usage_seconds": 0, "warnings_sent": []})
         window["usage_seconds"] = int(window.get("usage_seconds", 0)) + int(seconds)
+        window.setdefault("warnings_sent", [])
+    _save(path, state)
+    return state
+
+
+def mark_warning_sent(state_dir, resource, warning, now=None):
+    path = _path(state_dir, resource, now=now)
+    state = load_state(state_dir, resource, now=now)
+    key = warning.persist_key if hasattr(warning, "persist_key") else str(warning)
+    window_id = getattr(warning, "window_id", None)
+    if window_id:
+        window = state["windows"].setdefault(window_id, {"usage_seconds": 0, "warnings_sent": []})
+        sent = window.setdefault("warnings_sent", [])
+        if key not in sent:
+            sent.append(key)
+    else:
+        sent = state.setdefault("warnings_sent", [])
+        if key not in sent:
+            sent.append(key)
     _save(path, state)
     return state

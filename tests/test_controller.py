@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from timefence import controller
-from timefence.usage import add_usage, get_usage
+from timefence.usage import add_usage, get_usage, load_state
 from tests.helpers import (
     make_config,
     make_day_policy,
@@ -307,3 +307,75 @@ def test_one_resource_failure_does_not_skip_remaining_resources(app_dir, monkeyp
 
     modules["youtube"].is_active.assert_called_once()
     assert get_usage(app_dir / "state", "youtube", now=MONDAY_AFTERNOON) == 15
+
+
+def test_daily_warning_fires_once_when_threshold_crossed(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    notify = MagicMock(return_value=True)
+    monkeypatch.setattr(controller, "show_notification", notify)
+    install_modules(monkeypatch, roblox=True)
+    write_rules(
+        app_dir,
+        make_config(
+            resources={
+                "roblox": make_resource(
+                    display_name="Roblox",
+                    default=make_day_policy(daily_limit_minutes=45, warning_minutes=[10, 5, 1]),
+                )
+            }
+        ),
+    )
+    add_usage(app_dir / "state", "roblox", 45 * 60 - 10 * 60 - 8, window_id="all_day", now=MONDAY_AFTERNOON)
+
+    run_cycles(app_dir, monkeypatch, cycles=2)
+
+    messages = [call.args[1] for call in notify.call_args_list]
+    assert messages == ["Roblox has 10 minutes remaining today."]
+    assert notify.call_args.args[0] == "TimeFence"
+    state = load_state(app_dir / "state", "roblox", now=MONDAY_AFTERNOON)
+    assert state["warnings_sent"] == ["daily:10"]
+
+
+def test_notification_failure_does_not_affect_enforcement(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    monkeypatch.setattr(controller, "show_notification", MagicMock(side_effect=RuntimeError("osascript failed")))
+    modules = install_modules(monkeypatch, roblox=True)
+    write_rules(
+        app_dir,
+        make_config(
+            resources={
+                "roblox": make_resource(
+                    default=make_day_policy(daily_limit_minutes=45, warning_minutes=[10, 5, 1])
+                )
+            }
+        ),
+    )
+    add_usage(app_dir / "state", "roblox", 45 * 60, window_id="all_day", now=MONDAY_AFTERNOON)
+
+    run_cycles(app_dir, monkeypatch)
+
+    modules["roblox"].enforce.assert_called_once()
+    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 45 * 60
+
+
+def test_notification_failure_still_records_usage(app_dir, monkeypatch):
+    freeze_now(monkeypatch, MONDAY_AFTERNOON)
+    monkeypatch.setattr(controller, "show_notification", MagicMock(side_effect=RuntimeError("osascript failed")))
+    modules = install_modules(monkeypatch, roblox=True)
+    write_rules(
+        app_dir,
+        make_config(
+            resources={
+                "roblox": make_resource(
+                    default=make_day_policy(daily_limit_minutes=45, warning_minutes=[10, 5, 1])
+                )
+            }
+        ),
+    )
+    add_usage(app_dir / "state", "roblox", 45 * 60 - 10 * 60 - 8, window_id="all_day", now=MONDAY_AFTERNOON)
+
+    run_cycles(app_dir, monkeypatch)
+
+    modules["roblox"].enforce.assert_not_called()
+    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 45 * 60 - 10 * 60 - 8 + 15
+    assert load_state(app_dir / "state", "roblox", now=MONDAY_AFTERNOON)["warnings_sent"] == []

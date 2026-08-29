@@ -119,3 +119,45 @@ def test_rejects_missing_allowed_windows_array():
                 resources={"roblox": make_resource(default={"daily_limit_minutes": 30})}
             )
         )
+
+
+def test_rejects_invalid_warning_minutes():
+    with pytest.raises(ValueError, match="must be an array"):
+        validate_config(
+            make_config(
+                resources={"roblox": make_resource(default=make_day_policy(warning_minutes=5))}
+            )
+        )
+    with pytest.raises(ValueError, match="positive number"):
+        validate_config(
+            make_config(
+                resources={"roblox": make_resource(default=make_day_policy(warning_minutes=[10, 0]))}
+            )
+        )
+    with pytest.raises(ValueError, match="duplicate value"):
+        validate_config(
+            make_config(
+                resources={"roblox": make_resource(default=make_day_policy(warning_minutes=[5, 5]))}
+            )
+        )
+    with pytest.raises(ValueError, match="exceeds the 45-minute limit"):
+        validate_config(
+            make_config(
+                resources={
+                    "roblox": make_resource(
+                        default=make_day_policy(daily_limit_minutes=45, warning_minutes=[10, 60])
+                    )
+                }
+            )
+        )
+
+
+def test_allows_warning_minutes_when_no_limit_exists():
+    cfg = make_config(
+        resources={
+            "roblox": make_resource(
+                default=make_day_policy(daily_limit_minutes=0, warning_minutes=[10, 5])
+            )
+        }
+    )
+    assert validate_config(cfg)["resources"]["roblox"]["policy"]["default"]["warning_minutes"] == [10, 5]

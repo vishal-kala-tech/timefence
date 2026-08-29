@@ -14,6 +14,10 @@ Each resource policy is resolved in this order:
 
 A resolved day policy has a `daily_limit_minutes` cap (shared across all windows; `0` means no daily cap) and `allowed_windows`. Each window needs a stable `id`, `start`, and `end` (`HH:MM`). Optional `limit_minutes` caps that window only. Daily limit always wins: leftover window budget cannot be used after the day is exhausted.
 
+Optional `warning_minutes` on a day policy or window fire a macOS notification when remaining *usage* (not wall-clock time) first drops to that many minutes. Each threshold is sent once per resource/date/limit/window and stored in that day's usage state. Warnings are skipped when there is no corresponding limit. Notification failures are logged and never block enforcement.
+
+Optional `display_name` is used in notification text; otherwise the resource id is used.
+
 Usage is stored per calendar day, per resource, with totals and per-window counters keyed by window id. Changing a window's times does not reset its usage.
 
 Invalid configs are rejected. The controller keeps running on the last valid config.

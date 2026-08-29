@@ -15,6 +15,30 @@ def _non_negative_number(value, field):
     return value
 
 
+def _positive_number(value, field):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be a positive number")
+    if value <= 0:
+        raise ValueError(f"{field} must be a positive number")
+    return value
+
+
+def validate_warning_minutes(warnings, field, limit_minutes=None):
+    if warnings is None:
+        return
+    if not isinstance(warnings, list):
+        raise ValueError(f"{field} must be an array")
+    seen = set()
+    for index, value in enumerate(warnings):
+        _positive_number(value, f"{field}[{index}]")
+        key = float(value)
+        if key in seen:
+            raise ValueError(f"{field} has duplicate value {value}")
+        seen.add(key)
+        if limit_minutes not in (None, 0) and value > limit_minutes:
+            raise ValueError(f"{field} value {value} exceeds the {limit_minutes}-minute limit")
+
+
 def _validate_window(window, field):
     if not isinstance(window, dict):
         raise ValueError(f"{field} must be an object")
@@ -29,6 +53,12 @@ def _validate_window(window, field):
     if "limit_minutes" in window and window.get("limit_minutes") is not None:
         _non_negative_number(window["limit_minutes"], f"{field}.limit_minutes")
 
+    validate_warning_minutes(
+        window.get("warning_minutes"),
+        f"{field}.warning_minutes",
+        limit_minutes=window.get("limit_minutes"),
+    )
+
     return window_id
 
 
@@ -38,6 +68,12 @@ def validate_day_policy(policy, field):
 
     if "daily_limit_minutes" in policy and policy.get("daily_limit_minutes") is not None:
         _non_negative_number(policy["daily_limit_minutes"], f"{field}.daily_limit_minutes")
+
+    validate_warning_minutes(
+        policy.get("warning_minutes"),
+        f"{field}.warning_minutes",
+        limit_minutes=policy.get("daily_limit_minutes"),
+    )
 
     windows = policy.get("allowed_windows")
     if windows is None:
@@ -58,6 +94,10 @@ def validate_resource(name, resource):
         raise ValueError("Resource name must be a non-empty string")
     if not isinstance(resource, dict):
         raise ValueError(f"Resource {name!r} must be an object")
+
+    display_name = resource.get("display_name")
+    if display_name is not None and (not isinstance(display_name, str) or not display_name.strip()):
+        raise ValueError(f"Resource {name!r} display_name must be a non-empty string")
 
     policy = resource.get("policy")
     if not isinstance(policy, dict):

@@ -1,74 +1,86 @@
 {
   "version": 1,
-  "revision": 2,
+  "revision": 3,
   "check_interval_seconds": 15,
   "resources": {
     "roblox": {
       "enabled": true,
+      "display_name": "Roblox",
       "type": "app",
       "process_pattern": "Roblox",
       "policy": {
         "default": {
           "daily_limit_minutes": 45,
+          "warning_minutes": [10, 5, 1],
           "allowed_windows": [
             {
               "id": "after_school",
               "start": "16:00",
               "end": "18:00",
-              "limit_minutes": 30
+              "limit_minutes": 30,
+              "warning_minutes": [5, 1]
             },
             {
               "id": "evening",
               "start": "19:00",
               "end": "20:30",
-              "limit_minutes": 30
+              "limit_minutes": 30,
+              "warning_minutes": [5, 1]
             }
           ]
         },
         "days": {
           "saturday": {
             "daily_limit_minutes": 120,
+            "warning_minutes": [10, 5, 1],
             "allowed_windows": [
               {
                 "id": "morning",
                 "start": "09:00",
                 "end": "12:00",
-                "limit_minutes": 60
+                "limit_minutes": 60,
+                "warning_minutes": [10, 5, 1]
               },
               {
                 "id": "afternoon",
                 "start": "14:00",
                 "end": "17:00",
-                "limit_minutes": 60
+                "limit_minutes": 60,
+                "warning_minutes": [10, 5, 1]
               },
               {
                 "id": "evening",
                 "start": "19:00",
                 "end": "21:00",
-                "limit_minutes": 30
+                "limit_minutes": 30,
+                "warning_minutes": [5, 1]
               }
             ]
           },
           "sunday": {
             "daily_limit_minutes": 120,
+            "warning_minutes": [10, 5, 1],
             "allowed_windows": [
               {
                 "id": "morning",
                 "start": "09:00",
                 "end": "12:00",
-                "limit_minutes": 60
+                "limit_minutes": 60,
+                "warning_minutes": [10, 5, 1]
               },
               {
                 "id": "afternoon",
                 "start": "14:00",
                 "end": "17:00",
-                "limit_minutes": 60
+                "limit_minutes": 60,
+                "warning_minutes": [10, 5, 1]
               },
               {
                 "id": "evening",
                 "start": "19:00",
                 "end": "21:00",
-                "limit_minutes": 30
+                "limit_minutes": 30,
+                "warning_minutes": [5, 1]
               }
             ]
           }
@@ -77,53 +89,62 @@
     },
     "youtube": {
       "enabled": true,
+      "display_name": "YouTube",
       "type": "website",
       "domains": ["youtube.com", "youtu.be"],
       "browser": "chrome",
       "policy": {
         "default": {
           "daily_limit_minutes": 30,
+          "warning_minutes": [10, 5, 1],
           "allowed_windows": [
             {
               "id": "evening",
               "start": "17:00",
               "end": "19:00",
-              "limit_minutes": 30
+              "limit_minutes": 30,
+              "warning_minutes": [5, 1]
             }
           ]
         },
         "days": {
           "saturday": {
             "daily_limit_minutes": 60,
+            "warning_minutes": [10, 5, 1],
             "allowed_windows": [
               {
                 "id": "morning",
                 "start": "10:00",
                 "end": "12:00",
-                "limit_minutes": 30
+                "limit_minutes": 30,
+                "warning_minutes": [5, 1]
               },
               {
                 "id": "afternoon",
                 "start": "15:00",
                 "end": "18:00",
-                "limit_minutes": 30
+                "limit_minutes": 30,
+                "warning_minutes": [5, 1]
               }
             ]
           },
           "sunday": {
             "daily_limit_minutes": 60,
+            "warning_minutes": [10, 5, 1],
             "allowed_windows": [
               {
                 "id": "morning",
                 "start": "10:00",
                 "end": "12:00",
-                "limit_minutes": 30
+                "limit_minutes": 30,
+                "warning_minutes": [5, 1]
               },
               {
                 "id": "afternoon",
                 "start": "15:00",
                 "end": "18:00",
-                "limit_minutes": 30
+                "limit_minutes": 30,
+                "warning_minutes": [5, 1]
               }
             ]
           }

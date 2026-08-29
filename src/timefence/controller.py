@@ -4,9 +4,10 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import load_config
-from .policy import evaluate, limit_seconds, limit_label, resolve_policy
+from .notifications import show_notification
+from .policy import due_warnings, evaluate, limit_seconds, limit_label, resolve_policy, resource_label
 from .resources import roblox, youtube
-from .usage import add_usage, load_state
+from .usage import add_usage, load_state, mark_warning_sent
 
 MODULES = {"roblox": roblox, "youtube": youtube}
 
@@ -33,6 +34,20 @@ def _usage_fields(policy, state, window=None):
     return " ".join(parts)
 
 
+def _emit_warnings(name, resource, policy, state, window, state_dir, now):
+    label = resource_label(name, resource)
+    for warning in due_warnings(policy, state, window=window, label=label):
+        try:
+            sent = show_notification("TimeFence", warning.message)
+        except Exception:
+            logging.exception("Notification failed for %s", name)
+            continue
+        if not sent:
+            continue
+        mark_warning_sent(state_dir, name, warning, now=now)
+        logging.info("Warned %s: %s", name, warning.message)
+
+
 def _tick_resource(name, resource, state_dir, interval, now):
     if not resource.get("enabled") or name not in MODULES:
         return
@@ -57,6 +72,10 @@ def _tick_resource(name, resource, state_dir, interval, now):
         return
 
     state = add_usage(state_dir, name, interval, window_id=decision.window_id, now=now)
+    try:
+        _emit_warnings(name, resource, policy, state, decision.window, state_dir, now)
+    except Exception:
+        logging.exception("Warning evaluation failed for %s", name)
     logging.info("%s active %s", name, _usage_fields(policy, state, decision.window))
 
 

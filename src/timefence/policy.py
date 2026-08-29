@@ -56,6 +56,94 @@ def limit_label(seconds):
     return f"{seconds}s" if seconds else "none"
 
 
+def resource_label(name, resource=None):
+    if isinstance(resource, dict):
+        for key in ("display_name", "label", "name"):
+            value = resource.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return name
+
+
+def _minutes_text(minutes):
+    if float(minutes) == int(minutes):
+        minutes = int(minutes)
+    unit = "minute" if float(minutes) == 1 else "minutes"
+    return f"{minutes} {unit}"
+
+
+def normalize_warning_minutes(values):
+    if not values:
+        return []
+    out = []
+    seen = set()
+    for value in values:
+        key = float(value)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(value)
+    return out
+
+
+class LimitWarning:
+    def __init__(self, persist_key, minutes, message, window_id=None):
+        self.persist_key = persist_key
+        self.minutes = minutes
+        self.message = message
+        self.window_id = window_id
+
+
+def _crossed_thresholds(limit, used, warning_minutes, sent, persist_key, message, window_id=None):
+    if not limit:
+        return []
+    remaining = limit - int(used or 0)
+    due = []
+    sent_keys = {str(item) for item in (sent or [])}
+    for minutes in normalize_warning_minutes(warning_minutes):
+        warn_seconds = limit_seconds(minutes)
+        if warn_seconds <= 0 or remaining <= 0 or remaining > warn_seconds:
+            continue
+        key = persist_key(minutes)
+        if key in sent_keys:
+            continue
+        due.append(LimitWarning(key, minutes, message(minutes), window_id=window_id))
+        sent_keys.add(key)
+    return due
+
+
+def due_warnings(policy, state, window=None, label="resource"):
+    state = state or {}
+    due = []
+    due.extend(
+        _crossed_thresholds(
+            limit_seconds(policy.get("daily_limit_minutes")),
+            state.get("total_usage_seconds", 0),
+            policy.get("warning_minutes"),
+            state.get("warnings_sent"),
+            persist_key=lambda minutes: f"daily:{int(minutes) if float(minutes) == int(minutes) else minutes}",
+            message=lambda minutes: f"{label} has {_minutes_text(minutes)} remaining today.",
+        )
+    )
+    if window:
+        window_id = window.get("id")
+        window_state = (state.get("windows") or {}).get(window_id) or {}
+        due.extend(
+            _crossed_thresholds(
+                limit_seconds(window.get("limit_minutes")),
+                window_state.get("usage_seconds", 0),
+                window.get("warning_minutes"),
+                window_state.get("warnings_sent"),
+                persist_key=lambda minutes: str(int(minutes) if float(minutes) == int(minutes) else minutes),
+                message=lambda minutes: (
+                    f"{label} has {_minutes_text(minutes)} remaining in the {window_id} window."
+                ),
+                window_id=window_id,
+            )
+        )
+    return due
+
+
 def resolve_policy(resource, now=None):
     now = now or datetime.now()
     policy = resource.get("policy") or {}
