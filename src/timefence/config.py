@@ -178,3 +178,13 @@ def load_config(path: Path) -> dict:
     with path.open() as f:
         cfg = json.load(f)
     return validate_config(cfg)
+
+
+def save_config(path: Path, cfg: dict) -> dict:
+    cfg = validate_config(cfg)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return cfg

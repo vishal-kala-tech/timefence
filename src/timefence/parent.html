@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TimeFence setup</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --card: #fffdf8;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #e7e5e4;
+      --ok: #15803d;
+      --ok-bg: #dcfce7;
+      --accent: #1d4ed8;
+      --accent-bg: #dbeafe;
+      --danger: #b45309;
+      --danger-bg: #ffedd5;
+      --focus: #1d4ed8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1c1917;
+        --card: #292524;
+        --ink: #fafaf9;
+        --muted: #a8a29e;
+        --line: #44403c;
+        --ok-bg: #14532d;
+        --accent-bg: #1e3a8a;
+        --danger-bg: #7c2d12;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    main { max-width: 820px; margin: 0 auto; padding: 28px 20px 64px; }
+    h1 { font-size: 2rem; margin: 0 0 6px; }
+    h2 { font-size: 1.35rem; margin: 0; }
+    h3 { font-size: 1.05rem; margin: 0 0 10px; }
+    .lede, .hint, .meta { color: var(--muted); }
+    .lede { margin: 0 0 22px; font-size: 1.05rem; }
+    .hint { margin: 8px 0 0; font-size: 0.92rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px 22px 18px;
+      margin-bottom: 16px;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-end;
+    }
+    .grow { flex: 1 1 140px; }
+    label.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 0.92rem; }
+    input[type="text"], input[type="password"], input[type="number"], select {
+      font: inherit;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--bg);
+      color: var(--ink);
+      width: 100%;
+    }
+    input:focus, select:focus, button:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+    }
+    button {
+      font: inherit;
+      font-weight: 600;
+      border: 0;
+      border-radius: 999px;
+      padding: 9px 16px;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+    }
+    button.secondary { background: var(--line); color: var(--ink); }
+    button.danger { background: var(--danger); }
+    button.ghost { background: transparent; color: var(--accent); padding: 6px 10px; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .banner {
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin: 0 0 16px;
+      font-weight: 600;
+    }
+    .banner.ok { background: var(--ok-bg); color: var(--ok); }
+    .banner.err { background: var(--danger-bg); color: var(--danger); }
+    .hidden { display: none !important; }
+    .head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0 12px; }
+    .tabs button {
+      background: var(--bg);
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+    .tabs button[aria-selected="true"] { background: var(--accent-bg); color: var(--accent); border-color: transparent; }
+    .window-row {
+      display: grid;
+      grid-template-columns: 1.4fr 0.8fr 0.8fr 0.7fr 1fr auto;
+      gap: 8px;
+      align-items: end;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+    .window-row .field { font-weight: 500; }
+    .grant-list { list-style: none; padding: 0; margin: 12px 0 0; }
+    .grant-list li {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 8px 0;
+      border-top: 1px solid var(--line);
+    }
+    .resource-title { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    footer { margin-top: 8px; color: var(--muted); font-size: 0.9rem; }
+    @media (max-width: 720px) {
+      .window-row { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section id="gate" class="card hidden">
+      <h1>TimeFence parent setup</h1>
+      <p class="lede" id="pin-copy">Choose a PIN so only a parent can change limits or grant extra time.</p>
+      <form id="pin-form">
+        <div class="row">
+          <label class="field grow">PIN
+            <input id="pin" type="password" autocomplete="current-password" minlength="4" required>
+          </label>
+          <label class="field grow" id="pin-confirm-wrap">Confirm PIN
+            <input id="pin-confirm" type="password" autocomplete="new-password" minlength="4">
+          </label>
+        </div>
+        <p class="banner err hidden" id="pin-error"></p>
+        <p class="hint">At least 4 characters. This stays on this Mac only.</p>
+        <p class="actions" style="margin-top:14px">
+          <button type="submit" id="pin-submit">Continue</button>
+        </p>
+      </form>
+    </section>
+
+    <section id="app" class="hidden">
+      <div class="head">
+        <div>
+          <h1>TimeFence setup</h1>
+          <p class="lede">Standing limits apply after the next check (about 15 seconds). Bonus time is for today only and is gone at midnight.</p>
+        </div>
+        <button type="button" class="secondary" id="lock">Lock</button>
+      </div>
+      <p class="banner hidden" id="flash"></p>
+
+      <article class="card">
+        <h2>Grant extra time</h2>
+        <p class="hint">Adds minutes on top of today’s standing cap. Use this when a session needs a little more, without changing the usual rules.</p>
+        <form id="grant-form">
+          <div class="row">
+            <label class="field grow">App or site
+              <select id="grant-resource" required></select>
+            </label>
+            <label class="field">Minutes
+              <input id="grant-minutes" type="number" min="1" step="1" value="15" required>
+            </label>
+            <button type="submit">Grant</button>
+          </div>
+        </form>
+        <ul class="grant-list" id="grant-list"></ul>
+        <p class="hint" id="grant-empty">No bonus time is active.</p>
+      </article>
+
+      <form id="rules-form">
+        <div class="head" style="margin: 8px 0 12px">
+          <h2>Standing rules</h2>
+          <div class="actions">
+            <label class="check"><input id="log-browsing" type="checkbox"> Track websites in Chrome</label>
+            <button type="submit">Save rules</button>
+          </div>
+        </div>
+        <div id="resources"></div>
+        <p class="actions"><button type="submit">Save rules</button></p>
+      </form>
+      <footer>This page is only on this Mac at http://127.0.0.1:8743/setup. The kid status page does not link here.</footer>
+    </section>
+  </main>
+  <script>
+    const gate = document.getElementById("gate");
+    const app = document.getElementById("app");
+    const flashEl = document.getElementById("flash");
+    const pinForm = document.getElementById("pin-form");
+    const pinInput = document.getElementById("pin");
+    const pinConfirm = document.getElementById("pin-confirm");
+    const pinConfirmWrap = document.getElementById("pin-confirm-wrap");
+    const pinError = document.getElementById("pin-error");
+    const pinCopy = document.getElementById("pin-copy");
+    const pinSubmit = document.getElementById("pin-submit");
+    const resourcesEl = document.getElementById("resources");
+    const grantResource = document.getElementById("grant-resource");
+    const grantList = document.getElementById("grant-list");
+    const grantEmpty = document.getElementById("grant-empty");
+    const logBrowsing = document.getElementById("log-browsing");
+
+    function show(el, on) { el.classList.toggle("hidden", !on); }
+
+    function flash(kind, text) {
+      flashEl.textContent = text || "";
+      flashEl.className = "banner " + (kind || "");
+      show(flashEl, Boolean(text));
+    }
+
+    async function api(path, options) {
+      const opts = Object.assign({ credentials: "same-origin", headers: {} }, options || {});
+      if (opts.body && typeof opts.body !== "string") {
+        opts.headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(opts.body);
+      }
+      const res = await fetch(path, opts);
+      const text = await res.text();
+      let data = {};
+      if (text) {
+        try { data = JSON.parse(text); }
+        catch { data = { error: text }; }
+      }
+      if (!res.ok) throw new Error(data.error || text || res.statusText);
+      return data;
+    }
+
+    function emptyDay() {
+      return {
+        daily_limit_minutes: 0,
+        warning_minutes: [],
+        windows: [{ id: "all_day", name: "all day", start: "00:00", end: "24:00", limit_minutes: 0, warning_minutes: [] }]
+      };
+    }
+
+    function clone(value) {
+      return JSON.parse(JSON.stringify(value));
+    }
+
+    function warnText(list) {
+      return (list || []).join(", ");
+    }
+
+    function field(label, input) {
+      const wrap = document.createElement("label");
+      wrap.className = "field";
+      wrap.append(label, input);
+      return wrap;
+    }
+
+    function input(attrs) {
+      const node = document.createElement("input");
+      Object.entries(attrs).forEach(([key, value]) => {
+        if (key === "className") node.className = value;
+        else node.setAttribute(key, value);
+      });
+      return node;
+    }
+
+    function windowRow(win) {
+      const row = document.createElement("div");
+      row.className = "window-row";
+      const name = input({ type: "text", name: "wname", value: win.name || win.id || "" });
+      const start = input({ type: "text", name: "wstart", value: win.start || "16:00", placeholder: "16:00" });
+      const end = input({ type: "text", name: "wend", value: win.end || "18:00", placeholder: "18:00" });
+      const limit = input({ type: "number", name: "wlimit", min: "0", step: "1", value: String(win.limit_minutes || 0) });
+      const warn = input({ type: "text", name: "wwarn", value: warnText(win.warning_minutes), placeholder: "5, 1" });
+      row.dataset.id = win.id || "";
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "ghost";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => {
+        const list = row.parentElement;
+        if (list && list.querySelectorAll(".window-row").length <= 1) return;
+        row.remove();
+      });
+      row.append(
+        field("Window name", name),
+        field("Start", start),
+        field("End", end),
+        field("Cap (min)", limit),
+        field("Warn at", warn),
+        remove
+      );
+      return row;
+    }
+
+    function collectWindows(root) {
+      return [...root.querySelectorAll(".window-row")].map((row) => ({
+        id: row.dataset.id,
+        name: row.querySelector("[name=wname]").value,
+        start: row.querySelector("[name=wstart]").value,
+        end: row.querySelector("[name=wend]").value,
+        limit_minutes: Number(row.querySelector("[name=wlimit]").value || 0),
+        warning_minutes: row.querySelector("[name=wwarn]").value
+      }));
+    }
+
+    function collectDay(panel) {
+      return {
+        daily_limit_minutes: Number(panel.querySelector("[name=daily]").value || 0),
+        warning_minutes: panel.querySelector("[name=warn]").value,
+        windows: collectWindows(panel)
+      };
+    }
+
+    function fillDay(panel, day) {
+      const data = day || emptyDay();
+      panel.querySelector("[name=daily]").value = data.daily_limit_minutes || 0;
+      panel.querySelector("[name=warn]").value = warnText(data.warning_minutes);
+      const list = panel.querySelector(".windows");
+      list.replaceChildren();
+      (data.windows && data.windows.length ? data.windows : emptyDay().windows).forEach((win) => {
+        list.append(windowRow(win));
+      });
+    }
+
+    function dayPanel(name, day, customizable) {
+      const panel = document.createElement("div");
+      panel.className = "day-panel";
+      panel.dataset.day = name;
+      if (customizable) {
+        const toggle = document.createElement("label");
+        toggle.className = "check";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.className = "custom-day";
+        box.checked = Boolean(day);
+        toggle.append(box, " Use different hours than school days");
+        panel.append(toggle);
+      }
+      const body = document.createElement("div");
+      body.className = "day-body";
+      const daily = input({ type: "number", name: "daily", min: "0", step: "1", value: "0" });
+      const warn = input({ type: "text", name: "warn", placeholder: "10, 5, 1" });
+      const limits = document.createElement("div");
+      limits.className = "row";
+      limits.append(field("Daily limit (minutes, 0 = no cap)", daily), field("Warn when this many minutes remain", warn));
+      const windows = document.createElement("div");
+      windows.className = "windows";
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "secondary";
+      add.textContent = "Add window";
+      add.addEventListener("click", () => {
+        windows.append(windowRow({ name: "new window", start: "16:00", end: "18:00", limit_minutes: 0, warning_minutes: [] }));
+      });
+      body.append(limits, windows, add);
+      panel.append(body);
+      fillDay(panel, day);
+      if (customizable) {
+        const box = panel.querySelector(".custom-day");
+        panel.dataset.seeded = day ? "1" : "0";
+        const sync = () => { body.classList.toggle("hidden", !box.checked); };
+        box.addEventListener("change", () => {
+          if (box.checked && panel.dataset.seeded !== "1") {
+            const school = panel.closest(".resource").querySelector('[data-day="default"]');
+            fillDay(panel, school ? collectDay(school) : emptyDay());
+            panel.dataset.seeded = "1";
+          }
+          sync();
+        });
+        sync();
+      }
+      return panel;
+    }
+
+    function resourceCard(resource) {
+      const card = document.createElement("article");
+      card.className = "card resource";
+      card.dataset.id = resource.id;
+      const title = document.createElement("div");
+      title.className = "resource-title";
+      const heading = document.createElement("h2");
+      heading.textContent = resource.display_name || resource.id;
+      const enabled = document.createElement("label");
+      enabled.className = "check";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.className = "enabled";
+      box.checked = resource.enabled !== false;
+      enabled.append(box, " Enabled");
+      title.append(heading, enabled);
+      const name = input({ type: "text", className: "display-name", value: resource.display_name || resource.id });
+      const tabs = document.createElement("div");
+      tabs.className = "tabs";
+      const panels = document.createElement("div");
+      const days = [
+        ["default", "School days", resource.default, false],
+        ["saturday", "Saturday", resource.saturday, true],
+        ["sunday", "Sunday", resource.sunday, true]
+      ];
+      days.forEach(([key, label, day, customizable], index) => {
+        const tab = document.createElement("button");
+        tab.type = "button";
+        tab.textContent = label;
+        tab.setAttribute("aria-selected", index === 0 ? "true" : "false");
+        const panel = dayPanel(key, day, customizable);
+        if (index !== 0) panel.classList.add("hidden");
+        tab.addEventListener("click", () => {
+          [...tabs.children].forEach((btn) => btn.setAttribute("aria-selected", btn === tab ? "true" : "false"));
+          [...panels.children].forEach((node) => node.classList.toggle("hidden", node !== panel));
+        });
+        tabs.append(tab);
+        panels.append(panel);
+      });
+      card.append(title, field("Name on the kid page", name), tabs, panels);
+      return card;
+    }
+
+    function collectResource(card) {
+      const item = {
+        id: card.dataset.id,
+        display_name: card.querySelector(".display-name").value,
+        enabled: card.querySelector(".enabled").checked,
+        default: collectDay(card.querySelector('[data-day="default"]'))
+      };
+      ["saturday", "sunday"].forEach((day) => {
+        const panel = card.querySelector(`[data-day="${day}"]`);
+        const custom = panel.querySelector(".custom-day");
+        item[day] = custom.checked ? collectDay(panel) : null;
+      });
+      return item;
+    }
+
+    function renderRules(editor) {
+      logBrowsing.checked = editor.log_browsing !== false;
+      resourcesEl.replaceChildren();
+      (editor.resources || []).forEach((resource) => resourcesEl.append(resourceCard(resource)));
+    }
+
+    function renderGrants(payload) {
+      const selected = grantResource.value;
+      grantResource.replaceChildren();
+      (payload.resources || []).forEach((resource) => {
+        if (!resource.enabled) return;
+        const option = document.createElement("option");
+        option.value = resource.id;
+        option.textContent = resource.label;
+        grantResource.append(option);
+      });
+      if (selected) grantResource.value = selected;
+      grantList.replaceChildren();
+      (payload.grants || []).forEach((row) => {
+        const item = document.createElement("li");
+        const text = document.createElement("span");
+        text.textContent = `${row.label}: ${row.summary}`;
+        const clear = document.createElement("button");
+        clear.type = "button";
+        clear.className = "secondary";
+        clear.textContent = "Clear";
+        clear.addEventListener("click", async () => {
+          try {
+            renderGrants(await api("/api/grants/" + encodeURIComponent(row.id), { method: "DELETE" }));
+            flash("ok", "Cleared bonus time for " + row.label + ".");
+          } catch (err) {
+            flash("err", err.message);
+          }
+        });
+        item.append(text, clear);
+        grantList.append(item);
+      });
+      show(grantEmpty, !(payload.grants || []).length);
+    }
+
+    async function loadWorkspace() {
+      const [rules, grants] = await Promise.all([api("/api/rules"), api("/api/grants")]);
+      renderRules(rules);
+      renderGrants(grants);
+    }
+
+    function showGate(session) {
+      show(app, false);
+      show(gate, true);
+      const first = !session.has_pin;
+      pinCopy.textContent = first
+        ? "Choose a PIN so only a parent can change limits or grant extra time."
+        : "Enter the parent PIN to edit rules or grant extra time.";
+      pinSubmit.textContent = first ? "Set PIN and continue" : "Unlock";
+      show(pinConfirmWrap, first);
+      pinConfirm.required = first;
+      pinError.textContent = "";
+      show(pinError, false);
+      pinInput.value = "";
+      pinConfirm.value = "";
+      pinInput.focus();
+    }
+
+    function showApp() {
+      show(gate, false);
+      show(app, true);
+    }
+
+    pinForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const pin = pinInput.value;
+      if (pinConfirmWrap.classList.contains("hidden") === false && pin !== pinConfirm.value) {
+        pinError.textContent = "PIN and confirmation do not match.";
+        show(pinError, true);
+        return;
+      }
+      try {
+        await api("/api/pin", { method: "POST", body: { pin } });
+        showApp();
+        await loadWorkspace();
+      } catch (err) {
+        pinError.textContent = err.message;
+        show(pinError, true);
+      }
+    });
+
+    document.getElementById("lock").addEventListener("click", async () => {
+      await api("/api/logout", { method: "POST", body: {} });
+      flash("", "");
+      showGate({ has_pin: true, unlocked: false });
+    });
+
+    document.getElementById("grant-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const payload = await api("/api/grants", {
+          method: "POST",
+          body: { resource: grantResource.value, minutes: Number(document.getElementById("grant-minutes").value) }
+        });
+        renderGrants(payload);
+        flash("ok", "Granted extra time. The kid page will show it after the next refresh.");
+      } catch (err) {
+        flash("err", err.message);
+      }
+    });
+
+    document.getElementById("rules-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const editor = {
+          log_browsing: logBrowsing.checked,
+          resources: [...resourcesEl.querySelectorAll(".resource")].map(collectResource)
+        };
+        renderRules(await api("/api/rules", { method: "PUT", body: editor }));
+        flash("ok", "Rules saved. Changes apply after the next check.");
+      } catch (err) {
+        flash("err", err.message);
+      }
+    });
+
+    (async () => {
+      try {
+        const session = await api("/api/parent/session");
+        if (session.unlocked) {
+          showApp();
+          await loadWorkspace();
+        } else {
+          showGate(session);
+        }
+      } catch (err) {
+        showGate({ has_pin: false, unlocked: false });
+        pinError.textContent = err.message;
+        show(pinError, true);
+      }
+    })();
+  </script>
+</body>
+</html>

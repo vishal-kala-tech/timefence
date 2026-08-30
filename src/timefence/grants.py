@@ -254,19 +254,32 @@ def grant_summary(grant, now=None):
     return "Bonus time"
 
 
-def list_grants(cfg, state_dir, now=None):
+def grant_rows(cfg, state_dir, now=None):
     now = now or datetime.now()
-    lines = []
     stored = load_grants(state_dir, now=now)["grants"]
+    rows = []
     for name, resource in (cfg.get("resources") or {}).items():
         if not isinstance(resource, dict):
             continue
         grant = active_grant(stored.get(name), now=now)
         if not grant:
             continue
-        label = resource.get("display_name") or name
-        lines.append(f"{label}: {grant_summary(grant, now=now)}")
-    return lines
+        extra = _extra_daily(grant)
+        rows.append(
+            {
+                "id": name,
+                "label": resource.get("display_name") or name,
+                "minutes": grant.get("minutes") or 0,
+                "extra_minutes": extra // 60,
+                "expires_at": grant.get("expires_at"),
+                "summary": grant_summary(grant, now=now),
+            }
+        )
+    return rows
+
+
+def list_grants(cfg, state_dir, now=None):
+    return [f"{row['label']}: {row['summary']}" for row in grant_rows(cfg, state_dir, now=now)]
 
 
 def grant_from_config(cfg, state_dir, name, minutes, now=None):

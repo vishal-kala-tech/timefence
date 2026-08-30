@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from timefence.config import load_config, validate_config
+from timefence.config import load_config, save_config, validate_config
 from tests.helpers import make_config, make_day_policy, make_resource, make_window, write_rules
 
 
@@ -198,3 +198,13 @@ def test_accepts_status_page_settings():
     cfg["status_page"] = False
     cfg["status_port"] = 8743
     assert validate_config(cfg)["status_port"] == 8743
+
+
+def test_save_config_replaces_file_atomically(app_dir):
+    path = write_rules(app_dir, make_config(revision=1))
+    saved = save_config(path, make_config(revision=9, log_browsing=True))
+    assert saved["revision"] == 9
+    assert load_config(path)["revision"] == 9
+    assert not path.with_suffix(".tmp").exists()
+    with pytest.raises(ValueError, match="Unsupported or invalid config"):
+        save_config(path, {"version": 2, "resources": {}})

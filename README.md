@@ -24,7 +24,7 @@ Usage is stored per calendar day, per resource, with totals and per-window count
 
 The child can check today's used and remaining time in a browser at `http://127.0.0.1:8743/` (only on that Mac). The page also lists the top 10 websites from today's Chrome active-tab log. It refreshes every 15 seconds. `./scripts/today.sh` opens it. A copy is also written to `~/Library/Application Support/TimeFence/status.html`. Set `status_page` to `false` in `rules.json` to turn this off, or `status_port` to use a different localhost port.
 
-A parent can add extra time for the current session without editing `rules.json`: `./scripts/grant.sh youtube 15` (or `roblox`, `youtube_shorts`). That lasts until now plus those minutes, or midnight, whichever is sooner. It raises the standing cap and, if needed, allows the resource outside a normal window. `./scripts/grant.sh --list` shows active bonuses; `./scripts/grant.sh youtube --clear` removes one. The kid page shows “Bonus until …”.
+Parents set standing limits and grant extra time at `http://127.0.0.1:8743/setup` (PIN-gated; the kid page does not link here). First visit chooses a PIN; later visits unlock with it. The same screen is used for first-time setup and ongoing edits. Bonus time is for the current day only. `./scripts/setup.sh` opens the parent page. The CLI still works: `./scripts/grant.sh youtube 15` (or `roblox`, `youtube_shorts`). `./scripts/grant.sh --list` shows active bonuses; `./scripts/grant.sh youtube --clear` removes one. The kid page shows “Bonus until …”.
 
 When Chrome is frontmost, TimeFence also logs the active tab (host, URL, title, time on that URL) without applying a budget. Consecutive polls of the same URL collapse into one row. Files are `state/browse/YYYY-MM-DD.json` and a pipe-separated `state/browse/YYYY-MM-DD.txt` for Excel. `./scripts/sites.sh` prints today's list. `./scripts/activity.sh` summarizes videos and websites in English. Set `log_browsing` to `false` in `rules.json` to turn this off. This log is for later policy design; it does not block sites.
 
@@ -33,7 +33,7 @@ YouTube watch and Shorts keep a `videos` list in that day's state in the exact o
 Invalid configs are rejected. The controller keeps running on the last valid config.
 
 ## Config
-Edit `config/rules.json`. The controller reloads it every cycle, so an eventual API/sync agent can atomically replace this file after validating a downloaded config. `revision` makes remote changes easy to identify.
+Standing limits live in `config/rules.json`. Use the parent setup page for first-time setup and later changes; the controller reloads the file every cycle. `revision` increments on each save from the parent page. You can still edit the JSON directly. An eventual API/sync agent can atomically replace this file after validating a downloaded config.
 
 ## Install
 On a Mac that already has Python 3.10+:
