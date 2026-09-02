@@ -2,6 +2,8 @@
 
 macOS parental-control prototype with a Python controller and JSON configuration designed for eventual remote/API updates.
 
+Design: [docs/design.md](docs/design.md).
+
 ## Policy model
 JSON is the source of truth. Resource modules only detect activity and enforce blocks. The controller resolves policy, tracks usage, and decides whether to allow or block.
 
