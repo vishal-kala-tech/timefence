@@ -25,6 +25,7 @@ def format_timestamp(value):
 
 
 def countable_seconds(elapsed, max_countable=MAX_COUNTABLE_INTERVAL_SECONDS):
+    """Credit wall-clock elapsed, or 0 if the gap looks like sleep/stall."""
     try:
         elapsed = float(elapsed)
     except (TypeError, ValueError):
@@ -76,6 +77,7 @@ class UsageTracker:
         self._was_idle = False
 
     def close_orphaned_sessions(self, now=None):
+        """Close rows left open after a crash. Do not add the downtime as usage."""
         now = now or datetime.now()
         stamp = format_timestamp(now)
         for session in self.store.get_open_sessions():
@@ -270,6 +272,7 @@ class UsageTracker:
         )
 
     def _used_seconds(self, resource_id, now, state_dir=None):
+        """Prefer SQLite; fall back to JSON so remaining-time queries work before a dual-write."""
         row = self.store.get_daily(now.date().isoformat(), resource_id)
         if row is not None:
             return int(row.total_active_seconds)
@@ -280,6 +283,7 @@ class UsageTracker:
         return 0
 
     def _credit(self, resource_id, seconds, from_time, now):
+        """Add seconds to the day that contains the interval; split at local midnight."""
         if from_time is not None and from_time.date() != now.date():
             return self._credit_across_midnight(resource_id, seconds, from_time, now)
         total = self.store.add_active_seconds(
@@ -291,6 +295,7 @@ class UsageTracker:
         return seconds, total
 
     def _credit_across_midnight(self, resource_id, seconds, from_time, now):
+        """Put pre-midnight seconds on yesterday, post-midnight on today. History stays."""
         midnight = datetime.combine(now.date(), time.min)
         if from_time.tzinfo is not None and midnight.tzinfo is None:
             midnight = midnight.replace(tzinfo=from_time.tzinfo)

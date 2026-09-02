@@ -1,3 +1,10 @@
+"""SQLite row shapes for screen-time. Separate from JSON `usage.py` state.
+
+`DailyUsage` is the day's total. `SessionRecord` is one foreground stretch
+(`ended_at` None = still open). `TodayUsage` / `UsageSnapshot` are read models
+for remaining time and the current session.
+"""
+
 from dataclasses import dataclass
 from typing import Optional
 

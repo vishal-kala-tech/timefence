@@ -1,3 +1,9 @@
+"""Prose summary of today's YouTube watches and Chrome visits.
+
+Reads JSON usage + browse state. App screen-time sessions are not included
+here; those show on the status page remaining-time cards.
+"""
+
 from datetime import datetime
 from pathlib import Path
 

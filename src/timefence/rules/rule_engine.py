@@ -5,7 +5,11 @@ from ..policy import due_warnings, evaluate, resolve_policy, resource_label
 
 
 class RuleEngine:
-    """Policy decisions for a resource. Does not detect activity or enforce blocks."""
+    """Thin facade over `policy` for callers that want an object, not functions.
+
+    Does not detect activity or enforce. Kept so future remote/API policy can
+    replace this class without rewriting the controller.
+    """
 
     def evaluate(self, resource, usage_state, current_time=None, grant=None):
         now = current_time or datetime.now()

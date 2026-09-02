@@ -1,3 +1,14 @@
+"""Legacy Roblox adapter: detect and quit by process name.
+
+The shipped `roblox` resource is looked up by name in the controller, so this
+module still runs inspect/enforce even when `bundle_ids` are set. Screen-time
+does the counting (bundle ID). This file only answers running/frontmost and
+`pkill`s the process pattern.
+
+New apps should use `resources/app.py` (`type: app` + `bundle_ids`), not a
+copy of this module. Process-name matching is locale-sensitive and collides.
+"""
+
 import subprocess
 
 FRONTMOST_SCRIPT = (

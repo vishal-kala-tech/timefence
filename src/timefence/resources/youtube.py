@@ -1,3 +1,14 @@
+"""YouTube (and other `url_contains` websites) via the Chrome front tab.
+
+This is not screen-time app capture. Chrome-as-app and YouTube-as-website are
+separate budgets. Only the *frontmost* Chrome window's *active* tab counts;
+background tabs and other browsers do not.
+
+Inspect uses AppleScript + a small JS snippet for paused vs playing. Metadata
+comes from YouTube oEmbed (cached) so we do not scrape the page. Enforce
+closes matching tabs, not the whole Chrome process.
+"""
+
 import json
 import logging
 import re
@@ -13,6 +24,7 @@ TITLE_SUFFIX = " - YouTube"
 OEMBED_URL = "https://www.youtube.com/oembed?format=json&url="
 METADATA_CACHE_SIZE = 20
 _metadata_cache = OrderedDict()
+# Injected into the active Chrome tab. Paused/unstarted must not consume budget.
 PLAYBACK_JS = (
     "(function(){"
     "var p=document.querySelector('.html5-video-player');"
@@ -80,6 +92,7 @@ def clean_channel(name):
 
 
 def parse_video(url, title="", channel=""):
+    """Canonical watch vs Shorts URL. Invalid ids return None so they never enter history."""
     if not url:
         return None
     parsed = urlparse(url.strip())
@@ -190,6 +203,7 @@ def parse_playback(value):
 
 
 def inspect_script(resource):
+    """AppleScript: only when Chrome is frontmost, return URL/title/playback of the active tab."""
     match = _url_match_script(resource)
     js = _applescript_string(PLAYBACK_JS)
     return f'''
@@ -226,6 +240,7 @@ def active_script(resource):
 
 
 def close_script(resource):
+    """Close every Chrome tab whose URL matches; leave other tabs and Chrome running."""
     match = _url_match_script(resource)
     return f'''
 tell application "Google Chrome"

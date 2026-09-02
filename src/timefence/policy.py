@@ -1,3 +1,16 @@
+"""Allow / warn / block from a resolved day policy plus usage state.
+
+Does not detect activity or quit apps. `evaluate()` answers whether the child
+may use the resource *right now*. Warnings are separate (`due_warnings`).
+
+Day-policy resolution, most specific first: `date_overrides` → `days.<weekday>`
+→ `default` → legacy `weekday`/`weekend`. Missing `allowed_windows` means
+unrestricted schedule; an empty list means blocked outside a bonus grant.
+
+`24:00` is a legal end time (midnight at the end of the day). A window with
+start > end wraps past midnight (evening into morning).
+"""
+
 from datetime import datetime
 
 DAY_NAMES = (
@@ -35,6 +48,7 @@ def parse_hhmm(value):
         raise ValueError(f"Invalid time {value!r}; expected HH:MM")
 
     hours, minutes = int(hours_s), int(minutes_s)
+    # End-of-day midnight. `00:00` as an end would be the start of the day.
     if hours == 24 and minutes == 0:
         return 24 * 60
     if not (0 <= hours <= 23 and 0 <= minutes <= 59):
@@ -47,6 +61,7 @@ def _minutes(s):
 
 
 def limit_seconds(minutes):
+    """0 and None both mean no cap. Distinguishes \"unlimited\" from a 0-minute block."""
     if minutes in (None, 0):
         return 0
     return int(float(minutes) * 60)
@@ -113,6 +128,7 @@ def _crossed_thresholds(limit, used, warning_minutes, sent, persist_key, message
 
 
 def due_warnings(policy, state, window=None, label="resource", grant=None, now=None):
+    """Thresholds already crossed and not yet persisted. Safe to call every poll."""
     from . import grants
 
     now = now or datetime.now()
@@ -167,6 +183,7 @@ def warning_dialog_message(warnings, label="resource"):
 
 
 def resolve_policy(resource, now=None):
+    """Pick the day policy in force at `now`. Returns a copy of `_EMPTY_POLICY` if none."""
     now = now or datetime.now()
     policy = resource.get("policy") or {}
     if not isinstance(policy, dict):
@@ -205,6 +222,7 @@ def in_window(window, now=None):
     cur = now.hour * 60 + now.minute
     start = parse_hhmm(window["start"])
     end = parse_hhmm(window["end"])
+    # start > end wraps overnight (e.g. 21:00–07:00).
     return start <= cur < end if start <= end else cur >= start or cur < end
 
 
@@ -217,6 +235,7 @@ def matching_window(policy, now=None):
 
 
 def schedule_unrestricted(policy):
+    """True when the parent omitted `allowed_windows` (track / daily cap only)."""
     return not isinstance(policy, dict) or "allowed_windows" not in policy
 
 
@@ -227,6 +246,7 @@ def allowed_now(policy, now=None):
 
 
 def evaluate(policy, state, now=None, grant=None):
+    """Standing windows, then daily cap, then window cap. Grants can add a bonus window."""
     from . import grants
 
     now = now or datetime.now()
@@ -245,6 +265,7 @@ def evaluate(policy, state, now=None, grant=None):
         if window is None:
             return Evaluation(False, "outside_window")
 
+    # Daily cap wins over window remaining: extra window minutes cannot exceed the day.
     if daily_limit and used >= daily_limit:
         return Evaluation(False, "daily_limit", window)
 

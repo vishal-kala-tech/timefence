@@ -1,3 +1,26 @@
+"""The only control loop. Reloads policy, records usage, then enforces.
+
+Each cycle:
+
+1. Load `config/rules.json`. Invalid JSON keeps the last valid config so a
+   parent typo cannot stop the agent.
+2. Optionally log the Chrome front tab (`log_browsing`). That is history, not
+   a budget.
+3. Screen-time tick: snapshot frontmost app, credit elapsed seconds in SQLite,
+   dual-write the same seconds into the JSON usage files that status/grants
+   still read.
+4. Per resource: app-capture resources (`bundle_ids` or `type: app`) only
+   enforce if the process is still running. They must not add usage again
+   (the screen-time tick already did). YouTube/website resources still use
+   the old inspect → add-interval → enforce path.
+5. Refresh the local status page.
+
+Resource adapters are chosen by `_module_for`: `module`, then resource name,
+then `type`. A resource named `roblox` therefore uses `resources/roblox.py`
+even when it also has `bundle_ids`. Counting still goes through screen-time;
+only quit/inspect for enforcement uses that module.
+"""
+
 import logging
 import time
 from datetime import datetime
@@ -29,6 +52,8 @@ from .resources import roblox, youtube
 from .tracking import SqliteUsageStore, UsageTracker
 from .usage import add_usage, load_state, mark_warning_sent, note_video
 
+# Name/type → inspect/enforce adapter. Screen-time matching does not use this;
+# it keys off `bundle_ids`. `website` shares the YouTube Chrome-tab adapter.
 MODULES = {
     "roblox": roblox,
     "youtube": youtube,
@@ -93,6 +118,7 @@ def _usage_fields(policy, state, window=None, grant=None, now=None):
 
 
 def _emit_warnings(name, resource, policy, state, window, state_dir, now, grant=None):
+    """One dialog per poll for every newly crossed threshold, then persist so we do not re-alert."""
     label = resource_label(name, resource)
     warnings = due_warnings(policy, state, window=window, label=label, grant=grant, now=now)
     if not warnings:
@@ -113,6 +139,11 @@ def _emit_warnings(name, resource, policy, state, window, state_dir, now, grant=
 
 
 def _poll(mod, resource):
+    """Ask the adapter whether the resource is in use, and for page details.
+
+    `inspect()` returning None means not running / not the matching tab.
+    A dict can include `foreground`, `playback`, and YouTube `video` metadata.
+    """
     inspect = getattr(mod, "inspect", None)
     if callable(inspect):
         page = inspect(resource)
@@ -162,6 +193,7 @@ def _last_video_id(state):
 
 
 def _idle_reason(page):
+    """Website-only: paused video or background Chrome tab should not add seconds."""
     if not isinstance(page, dict):
         return None
     if page.get("playback") == "paused":
@@ -187,6 +219,7 @@ def _log_browse(state_dir, interval, now):
 
 
 def _block(name, resource, mod, policy, state, decision, now, grant=None, video=None, state_dir=None, enforcement=None):
+    """Countdown first (best-effort), then quit/close. A failed popup still enforces."""
     if video and state_dir is not None:
         note_video(state_dir, name, video, now=now)
     logging.warning(
@@ -211,6 +244,7 @@ _last_frontmost_key = None
 
 
 def _log_frontmost(observation, resource_id=None):
+    """One SCREEN_TIME_FRONTMOST line per change. Unchanged polls stay silent."""
     global _last_frontmost_key
     front = observation.frontmost
     key = (
@@ -249,6 +283,11 @@ def _monitored_app_ids(cfg):
 
 
 def _sync_screen_time_usage(name, resource, seconds, state_dir, now, tracker):
+    """Copy SQLite-credited seconds into the JSON usage file and run policy.
+
+    Status page, grants, and warning persistence still read JSON. Dual-write
+    keeps those surfaces correct without making them depend on SQLite.
+    """
     policy = resolve_policy(resource, now=now)
     window = matching_window(policy, now=now)
     window_id = window.get("id") if window else None
@@ -273,6 +312,7 @@ def _sync_screen_time_usage(name, resource, seconds, state_dir, now, tracker):
 
 
 def _tick_screen_time(cfg, settings, monitor, tracker, state_dir, now):
+    """Foreground app accounting for resources that use bundle-ID capture."""
     if not settings.enabled or not _monitored_app_ids(cfg):
         return
     observation = monitor.capture(now)
@@ -292,6 +332,10 @@ def _tick_screen_time(cfg, settings, monitor, tracker, state_dir, now):
 
 
 def _enforce_if_running(name, resource, state_dir, now, enforcement):
+    """Block an app-capture resource that is still running after the budget is gone.
+
+    Does not add usage. `_tick_screen_time` already counted this interval.
+    """
     if not resource.get("enabled"):
         return
     mod = _module_for(name, resource)
@@ -320,6 +364,12 @@ def _enforce_if_running(name, resource, state_dir, now, enforcement):
 
 
 def _tick_resource(name, resource, state_dir, interval, now, enforcement=None):
+    """Legacy inspect → count configured interval → enforce (YouTube / websites).
+
+    Credits `interval` seconds when active, not wall-clock elapsed. That is
+    why app-capture resources must not use this path (they would double-count
+    and would use the wrong clock).
+    """
     if not resource.get("enabled"):
         return
     mod = _module_for(name, resource)
@@ -396,6 +446,7 @@ def _publish_status_page(app_dir, cfg, now):
 
 
 def run(app_dir: Path):
+    """Own the agent process until launchd stops it. Close open sessions on exit."""
     cfg_path = app_dir / "config/rules.json"
     state_dir = app_dir / "state"
     last_revision = None
@@ -404,6 +455,7 @@ def run(app_dir: Path):
     tracker = UsageTracker(store)
     monitor = MacOSActivityMonitor()
     enforcement = EnforcementService(_module_for)
+    # Sessions left open after a crash/kill must not pick up the downtime as usage.
     tracker.close_orphaned_sessions()
 
     try:
@@ -441,6 +493,9 @@ def _run_loop(app_dir, cfg_path, state_dir, last_revision, last_cfg, monitor=Non
 
             settings = screen_time_settings(cfg)
             interval = int(settings.poll_interval_seconds or cfg.get("check_interval_seconds", 15))
+            # Revision log is the signal that live rules.json actually changed.
+            # install.sh does not overwrite an existing file, so a missing
+            # SCREEN_TIME_ENABLED line usually means the live config is old.
             if cfg.get("revision") != last_revision:
                 logging.info("Loaded config revision %s", cfg.get("revision"))
                 if settings.enabled:
@@ -465,6 +520,7 @@ def _run_loop(app_dir, cfg_path, state_dir, last_revision, last_cfg, monitor=Non
                     logging.exception("Screen-time monitor failed")
             for name, resource in cfg["resources"].items():
                 try:
+                    # App-capture: usage already recorded. Website: inspect + add interval.
                     if settings.enabled and uses_app_capture(resource):
                         _enforce_if_running(name, resource, state_dir, now, enforcement)
                     else:

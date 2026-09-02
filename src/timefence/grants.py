@@ -1,3 +1,17 @@
+"""Same-day bonus time. Never changes standing `rules.json`.
+
+A grant expires at `min(now + minutes, end of local day)`. Loading a file
+dated yesterday returns empty: leftover bonus must not survive midnight.
+
+Two ways to relax a block:
+- extra_daily_seconds / extra_windows: raise the cap on an existing window
+- allow_until + bonus_window: a synthetic all-day window so the child can
+  use the resource *outside* standing hours
+
+`apply_grant` stacks on an already-active grant (adds seconds, keeps the
+later expiry) so two parent taps do not wipe the first.
+"""
+
 import json
 import logging
 from datetime import datetime, timedelta
@@ -25,6 +39,7 @@ def end_of_day(now):
 
 
 def grant_expiry(now, minutes):
+    """Cap at local midnight so a 60-minute grant at 11:30pm does not leak into tomorrow."""
     minutes = max(1, int(minutes))
     return min(now + timedelta(minutes=minutes), end_of_day(now))
 
@@ -61,6 +76,7 @@ def _extra_window(grant, window_id):
 
 
 def effective_daily_limit(policy, grant=None, now=None):
+    """Standing daily cap plus extra seconds from an active grant. 0 means no cap."""
     base = limit_seconds((policy or {}).get("daily_limit_minutes"))
     grant = active_grant(grant, now=now)
     if not base:
@@ -79,6 +95,7 @@ def effective_window_limit(window, grant=None, now=None):
 
 
 def bonus_window(grant, now=None):
+    """Synthetic window used only when the child is outside standing hours."""
     now = now or datetime.now()
     grant = active_grant(grant, now=now)
     if not grant:
@@ -114,6 +131,7 @@ def load_grants(state_dir, now=None):
         logging.warning("Corrupt grants file (%s); ignoring", exc)
         return empty_grants(now)
     if not isinstance(data, dict) or data.get("date") != now.date().isoformat():
+        # Yesterday's leftover bonus must not apply today.
         return empty_grants(now)
     grants = data.get("grants") if isinstance(data.get("grants"), dict) else {}
     return {"date": data["date"], "grants": grants}
@@ -152,6 +170,7 @@ def clear_grant(state_dir, resource, now=None):
 
 
 def _merge(existing, new, now):
+    """Stack extras onto a still-active grant; take the later expiry."""
     current = active_grant(existing, now=now)
     if not current:
         return new
@@ -181,6 +200,7 @@ def _merge(existing, new, now):
 
 
 def plan_grant(policy, state, minutes, now=None):
+    """Decide where the minutes go: daily extra, current-window extra, and/or bonus hours."""
     from .policy import evaluate
 
     now = now or datetime.now()
@@ -192,6 +212,7 @@ def plan_grant(policy, state, minutes, now=None):
     standing = evaluate(policy, state, now=now, grant=None)
     extra_daily = 0
     extra_windows = {}
+    # Only raise a cap that already exists. Unlimited stays unlimited.
     if limit_seconds(policy.get("daily_limit_minutes")):
         extra_daily = seconds
     window = standing.window or matching_window(policy, now=now)

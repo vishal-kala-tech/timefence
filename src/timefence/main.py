@@ -1,3 +1,12 @@
+"""Process entry for the launchd agent (`python -m timefence.main`).
+
+`TIME_FENCE_HOME` is the installed tree (`~/Library/Application Support/TimeFence`),
+not the git checkout. `PYTHONPATH` already points at that tree's `src/`.
+
+INFO goes to stderr so launchd captures it in `timefence.err.log`. stdout
+(`timefence.out.log`) is usually empty; do not look there for SCREEN_TIME lines.
+"""
+
 import logging, os
 from pathlib import Path
 from .controller import run

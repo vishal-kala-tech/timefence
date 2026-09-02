@@ -1,3 +1,14 @@
+"""macOS dialogs for warnings and the pre-block countdown.
+
+The controller must not freeze on a dialog. Warnings use `wait=False` so
+tracking continues. Blocks use `wait=True` so the child sees the countdown
+*before* the app is quit.
+
+Prefer `TimeFenceNotifier.app` (tk countdown). System Events `display dialog`
+is the fallback when the helper is missing. If both fail, still return so
+the caller can enforce — a missing popup must not skip the block.
+"""
+
 import json
 import logging
 import os
@@ -142,6 +153,7 @@ def _run_system_events_dialog(title: str, message: str, seconds: int, *, wait: b
 
 
 def _run_overlay(title: str, message: str, seconds: int, *, wait: bool) -> bool:
+    """Helper app first, System Events second. False means popup failed; still enforce."""
     seconds = max(1, int(seconds))
     _ping()
     try:

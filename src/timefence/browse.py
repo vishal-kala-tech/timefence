@@ -1,3 +1,13 @@
+"""Chrome front-tab history. Not a budget and not website matching.
+
+`log_browsing` records whoever is on the active tab while Chrome is
+frontmost. YouTube usage still goes through `resources/youtube.py`. Local
+hosts (status page, parent setup) are dropped from top-sites ranking.
+
+Consecutive polls of the same URL stay one visit row, same pattern as
+YouTube watch history.
+"""
+
 import json
 import logging
 import subprocess
@@ -68,6 +78,7 @@ def parse_page(url, title=""):
 
 
 def inspect():
+    """Active Chrome tab only if Chrome is frontmost. None otherwise."""
     result = subprocess.run(
         ["osascript", "-e", INSPECT_SCRIPT],
         capture_output=True,
@@ -136,6 +147,7 @@ def display_host(host):
 
 
 def _is_local_host(host):
+    """Status/parent pages on 127.0.0.1 would otherwise dominate top sites."""
     text = display_host(host)
     if text in ("localhost", "127.0.0.1", "::1"):
         return True
@@ -193,6 +205,7 @@ def write_browse_table(state_dir, now=None):
 
 
 def note_visit(state_dir, page, seconds, now=None):
+    """Append or extend today's visit row. Same URL as last poll stays one session."""
     if not isinstance(page, dict):
         return None
     url = str(page.get("url") or "").strip()

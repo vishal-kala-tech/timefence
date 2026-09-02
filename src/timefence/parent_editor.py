@@ -1,3 +1,17 @@
+"""Translate between `rules.json` and the parent-editor JSON subset.
+
+The UI only edits enabled, display name, weekday default, Saturday, and
+Sunday. It cannot add resources, change `bundle_ids`, or rewrite
+`date_overrides`. That keeps a PIN holder from inventing new apps or wiping
+screen-time identifiers.
+
+`editor_to_day` always emits at least one window (`all_day` 00:00–24:00). An
+empty `allowed_windows` list would mean "never allowed"; the form must not
+accidentally lock the child by clearing every window.
+
+`apply_editor` bumps `revision` so the controller logs a reload.
+"""
+
 import re
 
 from .config import validate_config
@@ -88,6 +102,7 @@ def editor_to_day(payload):
             item["warning_minutes"] = warnings
         windows.append(item)
     if not windows:
+        # Empty list would mean never allowed. Default to all-day instead of locking the child.
         windows = [{"id": "all_day", "start": "00:00", "end": "24:00"}]
     daily = max(0, _as_int(payload.get("daily_limit_minutes"), 0))
     day = {
@@ -101,6 +116,7 @@ def editor_to_day(payload):
 
 
 def editor_from_config(cfg):
+    """Subset the live file for the form. Weekend days are optional overlays on `default`."""
     resources = []
     for name, resource in (cfg.get("resources") or {}).items():
         if not isinstance(resource, dict):
@@ -127,6 +143,7 @@ def editor_from_config(cfg):
 
 
 def apply_editor(existing, editor):
+    """Patch enabled/names/schedules onto existing resources, then validate the whole file."""
     if not isinstance(editor, dict):
         raise ValueError("Editor payload must be an object")
     cfg = dict(existing or {})
@@ -143,6 +160,7 @@ def apply_editor(existing, editor):
             continue
         name = str(item.get("id") or "").strip()
         if name not in resources or not isinstance(resources[name], dict):
+            # Editor cannot create resources; unknown ids are ignored.
             continue
         resource = dict(resources[name])
         resource["enabled"] = bool(item.get("enabled", True))

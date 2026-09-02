@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Countdown window for TimeFence. Launched as TimeFenceNotifier.app via open(1)."""
+"""Countdown window launched as TimeFenceNotifier.app via `open(1)`.
+
+Runs in a **separate** process so a stuck dialog cannot freeze the agent.
+The agent waits on `open -W` only for blocks; warnings fire-and-forget.
+
+Tk is the visible countdown. If Tk fails (no display, missing Tcl), fall
+back to a System Events dialog. Payload is a JSON file path in argv so
+titles with quotes do not break the command line.
+"""
 
 from __future__ import annotations
 
@@ -76,6 +84,7 @@ def show_dialog(title: str, message: str, seconds: int) -> bool:
 
 
 def show_countdown(title: str, message: str, seconds: int) -> None:
+    """Always-on-top Tk window. Close button is disabled so the child cannot dismiss it."""
     import tkinter as tk
 
     root = tk.Tk()

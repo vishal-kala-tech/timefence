@@ -1,3 +1,14 @@
+"""Local HTTP server for the kid status page and parent setup APIs.
+
+Binds 127.0.0.1 only (not all interfaces). The kid page (`/`) is unauthenticated
+on purpose so a child can see remaining time. Parent routes under `/api/`
+require the PIN cookie from `/setup`.
+
+`ensure()` is safe every controller cycle: same port keeps the existing
+server; a port change stops and restarts. Cache-Control: no-store so the
+browser does not show a stale budget.
+"""
+
 import json
 import logging
 import threading
@@ -74,6 +85,7 @@ class _Handler(BaseHTTPRequestHandler):
         return data
 
     def _unlocked(self):
+        """True when the request carries a valid parent session cookie, not the PIN itself."""
         token = parent_auth.parse_cookie_header(self.headers.get("Cookie")).get(parent_auth.COOKIE_NAME)
         return parent_auth.valid_token(_app_dir, token)
 
@@ -150,6 +162,7 @@ class _Handler(BaseHTTPRequestHandler):
             if method == "PUT" and path == "/api/rules":
                 if not self._require_parent():
                     return
+                # Merge into existing rules.json; never replace the whole file from the editor payload.
                 cfg = save_config(_rules_path(app_dir), apply_editor(_load_rules(app_dir), self._read_json()))
                 logging.info("Parent saved rules revision=%s", cfg.get("revision"))
                 self._send_json(200, editor_from_config(cfg))

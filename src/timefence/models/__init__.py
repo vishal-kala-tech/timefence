@@ -1,3 +1,5 @@
+"""Frozen data shapes shared by the monitor, tracker, and store."""
+
 from .activity import KIND_APP, KIND_MEDIA, KIND_WEBSITE, Activity, FrontmostApp, Observation
 from .usage import DailyUsage, SessionRecord, TodayUsage, UsageSnapshot
 

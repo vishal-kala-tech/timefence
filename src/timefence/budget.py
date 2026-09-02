@@ -1,3 +1,9 @@
+"""Kid-facing remaining-time sentences. Does not change usage or enforce.
+
+Used by the status page and `python -m timefence.budget`. Numbers come from
+JSON usage files plus the active grant, same as `policy.evaluate`.
+"""
+
 from datetime import datetime
 from pathlib import Path
 
@@ -106,6 +112,7 @@ def _now_sentence(label, decision):
 
 
 def resource_budget(name, resource, state, now, grant=None):
+    """One status-card payload: allowed-now sentence, daily remaining, windows, bonus."""
     policy = resolve_policy(resource, now=now)
     decision = evaluate(policy, state, now=now, grant=grant)
     daily_limit = effective_daily_limit(policy, grant, now=now)

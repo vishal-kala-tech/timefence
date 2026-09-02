@@ -1,3 +1,15 @@
+"""SQLite implementation of UsageStore (`state/screen_time.sqlite`).
+
+Canonical store for app screen-time. JSON files under `state/<resource>/`
+are a dual-write for the status page and grants; do not treat this DB as
+optional for counting.
+
+Each method opens a short-lived connection so a crash does not leave a
+writer lock, and so the status server process is not required to share a
+handle. `record_warning` uses INSERT and treats IntegrityError as "already
+logged" (primary key on day + resource + key).
+"""
+
 import sqlite3
 from pathlib import Path
 from typing import List, Optional
@@ -71,6 +83,7 @@ class SqliteUsageStore(UsageStore):
         return conn
 
     def add_active_seconds(self, usage_date: str, resource_id: str, seconds: int, updated_at: str) -> int:
+        """Atomically upsert the day's total. Returns the new total."""
         seconds = max(0, int(seconds or 0))
         with self._connect() as conn:
             conn.execute("BEGIN")
@@ -168,6 +181,7 @@ class SqliteUsageStore(UsageStore):
                     (usage_date, resource_id, warning_key),
                 )
             except sqlite3.IntegrityError:
+                # Already recorded today; the controller uses the False return to skip a second log line.
                 return False
         return True
 

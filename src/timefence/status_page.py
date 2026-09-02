@@ -1,3 +1,9 @@
+"""Kid-facing remaining-time HTML. No PIN; reads JSON usage + grants.
+
+`write_html` also dumps `status.html` under the app dir so the page works if
+the HTTP server is down. Live numbers still come from `render()` on each GET.
+"""
+
 import html
 from datetime import datetime
 from pathlib import Path
@@ -56,6 +62,7 @@ def _status_short(row):
 
 
 def page_model(cfg, state_dir, now=None):
+    """Numbers + labels for the HTML template. Percent bars are relative to that resource's cap."""
     now = now or datetime.now()
     resources = []
     for row in summarize(cfg, state_dir, now=now):

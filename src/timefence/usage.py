@@ -1,3 +1,17 @@
+"""JSON usage files: `state/<resource>/<date>.json`.
+
+These remain the source of truth for the status page, grants, warnings, and
+the YouTube inspect path. Screen-time also writes SQLite, then dual-writes
+here so those surfaces do not need to know about the database.
+
+One file per resource per local calendar day. Midnight does not erase
+history; it starts a new file. Corrupt JSON resets to empty for that day
+rather than crashing the agent.
+
+Atomic save (`tmp` then replace) plus a pipe-separated Excel dump of the
+same day. Consecutive polls of the same YouTube id stay one watch row.
+"""
+
 import json
 import logging
 from datetime import date, datetime
@@ -225,6 +239,7 @@ def _normalize(data, now=None):
 
 
 def load_state(state_dir, resource, now=None):
+    """Today's usage for one resource. Missing or corrupt file → empty totals, not an error."""
     path = _path(state_dir, resource, now=now)
     if not path.exists():
         return empty_state(now)
@@ -236,6 +251,7 @@ def load_state(state_dir, resource, now=None):
 
 
 def _save(path, state):
+    """Atomic JSON write, then rebuild the day's pipe-separated export for Excel."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, indent=2))
@@ -254,6 +270,7 @@ def get_usage(state_dir, resource, window_id=None, now=None):
 
 
 def add_usage(state_dir, resource, seconds, window_id=None, now=None, video=None):
+    """Increment today's JSON totals. `window_id` None still adds to the daily total."""
     path = _path(state_dir, resource, now=now)
     state = load_state(state_dir, resource, now=now)
     state["date"] = _day(now).isoformat()
@@ -278,6 +295,7 @@ def note_video(state_dir, resource, video, now=None):
 
 
 def mark_warning_sent(state_dir, resource, warning, now=None):
+    """Persist a warning key so the same threshold does not re-alert this day."""
     path = _path(state_dir, resource, now=now)
     state = load_state(state_dir, resource, now=now)
     key = warning.persist_key if hasattr(warning, "persist_key") else str(warning)

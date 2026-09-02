@@ -1,3 +1,14 @@
+"""Load and validate `config/rules.json`. Shared by the agent and parent editor.
+
+Reject the whole file on any schema error so a bad parent save cannot run.
+`save_config` writes to a temp file then replaces, so a crash mid-write does
+not leave truncated JSON.
+
+`allowed_windows` is optional on a day policy:
+- key absent → schedule unrestricted (track / daily cap only)
+- `[]` → never allowed except a bonus grant
+"""
+
 import json
 import re
 from pathlib import Path
@@ -76,6 +87,7 @@ def validate_day_policy(policy, field):
     )
 
     windows = policy.get("allowed_windows")
+    # Missing key is unrestricted; only an explicit list is validated.
     if windows is None:
         return
     if not isinstance(windows, list):
@@ -148,6 +160,7 @@ def validate_resource(name, resource):
 
 
 def validate_config(cfg):
+    """Fail the whole file. The agent keeps the last valid config if this raises."""
     if not isinstance(cfg, dict):
         raise ValueError("Unsupported or invalid config")
     if cfg.get("version") != 1:
@@ -199,6 +212,7 @@ def _validate_screen_time(screen_time):
 
 
 def screen_time_settings(cfg):
+    """Map `screen_time` (and legacy `check_interval_seconds`) onto ScreenTimeSettings."""
     from .tracking.usage_tracker import DEFAULT_IDLE_THRESHOLD_SECONDS, MAX_COUNTABLE_INTERVAL_SECONDS, ScreenTimeSettings
 
     raw = cfg.get("screen_time") if isinstance(cfg, dict) else None
@@ -223,6 +237,7 @@ def load_config(path: Path) -> dict:
 
 
 def save_config(path: Path, cfg: dict) -> dict:
+    """Validate, then atomically replace the live rules file."""
     cfg = validate_config(cfg)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

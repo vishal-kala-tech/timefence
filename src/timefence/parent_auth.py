@@ -1,3 +1,12 @@
+"""Parent PIN and session cookie. The PIN is never stored in plaintext.
+
+`parent.json` holds salt + PBKDF2 hash + a random session token. Unlock
+compares the PIN hash, then sets an HttpOnly cookie to that token — not the
+PIN — so the password is not sitting in the browser cookie jar.
+
+`compare_digest` avoids timing leaks on both PIN and cookie checks.
+"""
+
 import hashlib
 import json
 import secrets
@@ -46,6 +55,7 @@ def has_pin(app_dir):
 
 
 def set_pin(app_dir, pin):
+    """First-time setup. Stores hash+salt and returns a session token for the cookie."""
     pin = str(pin or "").strip()
     if len(pin) < 4:
         raise ValueError("PIN must be at least 4 characters")
@@ -63,6 +73,7 @@ def set_pin(app_dir, pin):
 
 
 def unlock(app_dir, pin):
+    """Verify PIN; return the stored session token (never echo the PIN)."""
     data = load_parent(app_dir)
     salt = data.get("salt")
     expected = data.get("pin_hash")
@@ -85,6 +96,7 @@ def valid_token(app_dir, token):
 
 
 def cookie_header(token=None, clear=False):
+    """HttpOnly + SameSite=Strict. No Secure flag: we only serve http://127.0.0.1."""
     if clear or not token:
         return f"{COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
     return f"{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Strict"

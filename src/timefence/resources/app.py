@@ -1,3 +1,13 @@
+"""Generic Mac app: inspect/enforce by bundle ID, optional `process_pattern` kill.
+
+Used when the resource `type` is `app` (Cursor, Chrome, VS Code, …). Counting
+is done by the screen-time monitor; this module only answers "is it running /
+frontmost?" and quits it.
+
+`process_pattern` is a pgrep/pkill fallback for apps without a stable bundle
+ID. Prefer `bundle_ids`. Do not key usage off process name.
+"""
+
 import subprocess
 
 from ..activity.macos_activity_monitor import (
@@ -40,7 +50,11 @@ def is_running(resource):
 
 
 def inspect(resource):
-    """None if the app is not running; otherwise whether it is the frontmost app (by bundle ID)."""
+    """None if the app is not running; otherwise whether it is the frontmost app (by bundle ID).
+
+    `foreground` False means the process is up in the background. Screen-time
+    does not count that; enforcement may still quit it when the budget is gone.
+    """
     if not is_running(resource):
         return None
     front = frontmost_application()
@@ -59,6 +73,7 @@ def is_active(resource):
 
 
 def enforce(resource):
+    """Quit matching bundle IDs first, then pkill the optional process pattern."""
     ids = _bundle_ids(resource)
     if ids:
         terminate_bundle_ids(ids)

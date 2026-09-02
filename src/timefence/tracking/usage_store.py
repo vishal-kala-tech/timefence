@@ -5,7 +5,15 @@ from ..models.usage import DailyUsage, SessionRecord
 
 
 class UsageStore(ABC):
-    """Persistence for screen-time totals and sessions. Monitoring code depends on this interface, not SQLite."""
+    """Persistence for screen-time totals and sessions.
+
+    `UsageTracker` depends on this interface, not SQLite, so tests can inject
+    a fake store and a later backend can replace the file without rewriting
+    accounting rules.
+
+    Daily totals are keyed by local date string (`YYYY-MM-DD`). Open sessions
+    have `ended_at IS NULL`. `record_warning` is idempotent per (day, resource, key).
+    """
 
     @abstractmethod
     def add_active_seconds(self, usage_date: str, resource_id: str, seconds: int, updated_at: str) -> int:
