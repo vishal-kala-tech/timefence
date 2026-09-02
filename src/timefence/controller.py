@@ -4,7 +4,9 @@ from datetime import datetime
 from pathlib import Path
 
 from . import browse
-from .config import load_config
+from .activity import MacOSActivityMonitor, find_resource_by_bundle_id, uses_app_capture
+from .config import load_config, screen_time_settings
+from .enforcement import EnforcementService
 from .grants import (
     effective_daily_limit,
     effective_window_limit,
@@ -17,17 +19,20 @@ from .policy import (
     due_warnings,
     evaluate,
     limit_label,
+    matching_window,
     resolve_policy,
     resource_label,
     warning_dialog_message,
 )
+from .resources import app as app_resource
 from .resources import roblox, youtube
+from .tracking import SqliteUsageStore, UsageTracker
 from .usage import add_usage, load_state, mark_warning_sent, note_video
 
 MODULES = {
     "roblox": roblox,
     "youtube": youtube,
-    "app": roblox,
+    "app": app_resource,
     "website": youtube,
 }
 
@@ -181,7 +186,140 @@ def _log_browse(state_dir, interval, now):
     browse.note_visit(state_dir, page, interval, now=now)
 
 
-def _tick_resource(name, resource, state_dir, interval, now):
+def _block(name, resource, mod, policy, state, decision, now, grant=None, video=None, state_dir=None, enforcement=None):
+    if video and state_dir is not None:
+        note_video(state_dir, name, video, now=now)
+    logging.warning(
+        "Blocking %s: %s %s %s",
+        name,
+        decision.reason,
+        _block_fields(policy, state, decision, now, grant=grant),
+        _video_fields(video),
+    )
+    label = resource_label(name, resource)
+    try:
+        show_block_countdown("TimeFence", _block_countdown_message(label, decision.reason))
+    except Exception:
+        logging.exception("Block countdown failed for %s", name)
+    if enforcement is not None:
+        enforcement.enforce(name, resource)
+    else:
+        mod.enforce(resource)
+
+
+_last_frontmost_key = None
+
+
+def _log_frontmost(observation, resource_id=None):
+    global _last_frontmost_key
+    front = observation.frontmost
+    key = (
+        (front.bundle_id if front else None),
+        (front.app_name if front else None),
+        bool(observation.screen_locked),
+        resource_id,
+    )
+    if key == _last_frontmost_key:
+        return
+    _last_frontmost_key = key
+    if front is None:
+        logging.info(
+            "SCREEN_TIME_FRONTMOST app=none bundle_id=none idle_seconds=%s locked=%s",
+            int(observation.idle_seconds),
+            int(observation.screen_locked),
+        )
+        return
+    logging.info(
+        "SCREEN_TIME_FRONTMOST app=%s bundle_id=%s pid=%s resource=%s idle_seconds=%s locked=%s",
+        front.app_name or "unknown",
+        front.bundle_id or "none",
+        front.pid,
+        resource_id or "none",
+        int(observation.idle_seconds),
+        int(observation.screen_locked),
+    )
+
+
+def _monitored_app_ids(cfg):
+    names = []
+    for name, resource in (cfg.get("resources") or {}).items():
+        if isinstance(resource, dict) and resource.get("enabled", True) and uses_app_capture(resource):
+            names.append(name)
+    return names
+
+
+def _sync_screen_time_usage(name, resource, seconds, state_dir, now, tracker):
+    policy = resolve_policy(resource, now=now)
+    window = matching_window(policy, now=now)
+    window_id = window.get("id") if window else None
+    state = add_usage(state_dir, name, seconds, window_id=window_id, now=now)
+    grant = load_grant(state_dir, name, now=now)
+    decision = evaluate(policy, state, now=now, grant=grant)
+    try:
+        _emit_warnings(name, resource, policy, state, decision.window, state_dir, now, grant=grant)
+    except Exception:
+        logging.exception("Warning evaluation failed for %s", name)
+    if decision.reason == "daily_limit":
+        day = now.date().isoformat()
+        if tracker.store.record_warning(day, name, "limit_reached"):
+            logging.info(
+                "SCREEN_TIME_LIMIT_REACHED resource=%s used_seconds=%s",
+                name,
+                int(state.get("total_usage_seconds", 0)),
+            )
+    extra = _usage_fields(policy, state, decision.window, grant=grant, now=now)
+    logging.info("%s active %s", name, extra)
+    return state, decision
+
+
+def _tick_screen_time(cfg, settings, monitor, tracker, state_dir, now):
+    if not settings.enabled or not _monitored_app_ids(cfg):
+        return
+    observation = monitor.capture(now)
+    result = tracker.apply(observation, cfg.get("resources") or {}, settings)
+    current = None
+    if observation.frontmost and observation.frontmost.bundle_id:
+        match = find_resource_by_bundle_id(cfg.get("resources") or {}, observation.frontmost.bundle_id)
+        current = match[0] if match else None
+    _log_frontmost(observation, current)
+    if not result.increment_seconds or not result.resource_id:
+        return
+    name = result.resource_id
+    resource = (cfg.get("resources") or {}).get(name)
+    if not isinstance(resource, dict):
+        return
+    _sync_screen_time_usage(name, resource, result.increment_seconds, state_dir, now, tracker)
+
+
+def _enforce_if_running(name, resource, state_dir, now, enforcement):
+    if not resource.get("enabled"):
+        return
+    mod = _module_for(name, resource)
+    if mod is None:
+        return
+    policy = resolve_policy(resource, now=now)
+    state = load_state(state_dir, name, now=now)
+    grant = load_grant(state_dir, name, now=now)
+    decision = evaluate(policy, state, now=now, grant=grant)
+    active, page = _poll(mod, resource)
+    if not active or decision.allowed:
+        return
+    _block(
+        name,
+        resource,
+        mod,
+        policy,
+        state,
+        decision,
+        now,
+        grant=grant,
+        video=_video_from_page(page),
+        state_dir=state_dir,
+        enforcement=enforcement,
+    )
+
+
+def _tick_resource(name, resource, state_dir, interval, now, enforcement=None):
     if not resource.get("enabled"):
         return
     mod = _module_for(name, resource)
@@ -200,21 +338,19 @@ def _tick_resource(name, resource, state_dir, interval, now):
     idle = _idle_reason(page)
 
     if not decision.allowed:
-        if video:
-            note_video(state_dir, name, video, now=now)
-        logging.warning(
-            "Blocking %s: %s %s %s",
+        _block(
             name,
-            decision.reason,
-            _block_fields(policy, state, decision, now, grant=grant),
-            _video_fields(video),
+            resource,
+            mod,
+            policy,
+            state,
+            decision,
+            now,
+            grant=grant,
+            video=video,
+            state_dir=state_dir,
+            enforcement=enforcement,
         )
-        label = resource_label(name, resource)
-        try:
-            show_block_countdown("TimeFence", _block_countdown_message(label, decision.reason))
-        except Exception:
-            logging.exception("Block countdown failed for %s", name)
-        mod.enforce(resource)
         return
 
     if idle:
@@ -264,14 +400,32 @@ def run(app_dir: Path):
     state_dir = app_dir / "state"
     last_revision = None
     last_cfg = None
+    store = SqliteUsageStore(state_dir / "screen_time.sqlite")
+    tracker = UsageTracker(store)
+    monitor = MacOSActivityMonitor()
+    enforcement = EnforcementService(_module_for)
+    tracker.close_orphaned_sessions()
 
     try:
-        _run_loop(app_dir, cfg_path, state_dir, last_revision, last_cfg)
+        _run_loop(
+            app_dir,
+            cfg_path,
+            state_dir,
+            last_revision,
+            last_cfg,
+            monitor=monitor,
+            tracker=tracker,
+            enforcement=enforcement,
+        )
     finally:
+        try:
+            tracker.close()
+        except Exception:
+            logging.exception("Failed to close screen-time sessions")
         status_server.stop()
 
 
-def _run_loop(app_dir, cfg_path, state_dir, last_revision, last_cfg):
+def _run_loop(app_dir, cfg_path, state_dir, last_revision, last_cfg, monitor=None, tracker=None, enforcement=None):
     while True:
         interval = 15
         try:
@@ -285,9 +439,17 @@ def _run_loop(app_dir, cfg_path, state_dir, last_revision, last_cfg):
                     time.sleep(interval)
                     continue
 
-            interval = int(cfg.get("check_interval_seconds", 15))
+            settings = screen_time_settings(cfg)
+            interval = int(settings.poll_interval_seconds or cfg.get("check_interval_seconds", 15))
             if cfg.get("revision") != last_revision:
                 logging.info("Loaded config revision %s", cfg.get("revision"))
+                if settings.enabled:
+                    logging.info(
+                        "SCREEN_TIME_ENABLED poll_interval_seconds=%s idle_threshold_seconds=%s apps=%s",
+                        settings.poll_interval_seconds,
+                        int(settings.idle_threshold_seconds),
+                        ",".join(_monitored_app_ids(cfg)) or "none",
+                    )
                 last_revision = cfg.get("revision")
 
             now = _now()
@@ -296,9 +458,17 @@ def _run_loop(app_dir, cfg_path, state_dir, last_revision, last_cfg):
                     _log_browse(state_dir, interval, now)
                 except Exception:
                     logging.exception("Browse log failed")
+            if tracker is not None and monitor is not None:
+                try:
+                    _tick_screen_time(cfg, settings, monitor, tracker, state_dir, now)
+                except Exception:
+                    logging.exception("Screen-time monitor failed")
             for name, resource in cfg["resources"].items():
                 try:
-                    _tick_resource(name, resource, state_dir, interval, now)
+                    if settings.enabled and uses_app_capture(resource):
+                        _enforce_if_running(name, resource, state_dir, now, enforcement)
+                    else:
+                        _tick_resource(name, resource, state_dir, interval, now, enforcement=enforcement)
                 except Exception:
                     logging.exception("Resource %s failed", name)
             try:

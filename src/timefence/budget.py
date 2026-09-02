@@ -92,6 +92,8 @@ def _now_sentence(label, decision):
         if span:
             return f"{label} is allowed right now during the {name} window ({span})."
         return f"{label} is allowed right now during the {name} window."
+    if decision.allowed:
+        return f"{label} is allowed right now."
     if decision.reason == "daily_limit":
         return f"{label} is not allowed right now because the daily limit has been reached."
     if decision.reason == "window_limit":

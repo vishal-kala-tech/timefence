@@ -17,10 +17,16 @@ def test_load_config_accepts_shipped_rules():
     shipped = Path(__file__).resolve().parents[1] / "config" / "rules.json"
     cfg = load_config(shipped)
     assert cfg["version"] == 1
-    assert set(cfg["resources"]) >= {"roblox", "youtube", "youtube_shorts"}
+    assert set(cfg["resources"]) >= {"roblox", "cursor", "visual_studio", "chrome", "pycharm", "youtube", "youtube_shorts"}
     assert "youtube.com/watch" in cfg["resources"]["youtube"]["url_contains"]
     assert cfg["resources"]["youtube_shorts"]["url_contains"] == ["youtube.com/shorts"]
     assert cfg.get("log_browsing") is True
+    assert "com.roblox.RobloxPlayer" in cfg["resources"]["roblox"]["bundle_ids"]
+    assert cfg["resources"]["cursor"]["bundle_ids"] == ["com.todesktop.230313mzl4w4u92"]
+    assert "com.microsoft.VSCode" in cfg["resources"]["visual_studio"]["bundle_ids"]
+    assert "com.google.Chrome" in cfg["resources"]["chrome"]["bundle_ids"]
+    assert "com.jetbrains.pycharm" in cfg["resources"]["pycharm"]["bundle_ids"]
+    assert cfg.get("screen_time", {}).get("idle_threshold_seconds") == 120
     roblox_windows = cfg["resources"]["roblox"]["policy"]["default"]["allowed_windows"]
     assert [window["id"] for window in roblox_windows] == ["after_school", "evening"]
 
@@ -115,11 +121,20 @@ def test_rejects_unknown_day_name_and_bad_date_override():
         )
 
 
-def test_rejects_missing_allowed_windows_array():
-    with pytest.raises(ValueError, match="allowed_windows is required"):
+def test_allows_day_policy_without_allowed_windows():
+    cfg = make_config(
+        resources={"roblox": make_resource(default={"daily_limit_minutes": 30})}
+    )
+    assert "allowed_windows" not in validate_config(cfg)["resources"]["roblox"]["policy"]["default"]
+
+
+def test_rejects_non_array_allowed_windows():
+    with pytest.raises(ValueError, match="allowed_windows must be an array"):
         validate_config(
             make_config(
-                resources={"roblox": make_resource(default={"daily_limit_minutes": 30})}
+                resources={
+                    "roblox": make_resource(default={"daily_limit_minutes": 30, "allowed_windows": "nope"})
+                }
             )
         )
 
@@ -208,3 +223,32 @@ def test_save_config_replaces_file_atomically(app_dir):
     assert not path.with_suffix(".tmp").exists()
     with pytest.raises(ValueError, match="Unsupported or invalid config"):
         save_config(path, {"version": 2, "resources": {}})
+
+
+def test_accepts_bundle_ids_and_screen_time_settings():
+    cfg = make_config(
+        resources={
+            "roblox": make_resource(
+                type="app",
+                bundle_ids=["com.roblox.RobloxPlayer", "com.roblox.Roblox"],
+            )
+        }
+    )
+    cfg["screen_time"] = {
+        "enabled": True,
+        "poll_interval_seconds": 10,
+        "idle_threshold_seconds": 120,
+        "max_countable_interval_seconds": 30,
+    }
+    saved = validate_config(cfg)
+    assert saved["resources"]["roblox"]["bundle_ids"] == ["com.roblox.RobloxPlayer", "com.roblox.Roblox"]
+    assert saved["screen_time"]["poll_interval_seconds"] == 10
+
+
+def test_rejects_invalid_bundle_ids_and_screen_time():
+    with pytest.raises(ValueError, match="bundle_ids"):
+        validate_config(make_config(resources={"roblox": make_resource(bundle_ids="com.roblox.Roblox")}))
+    cfg = make_config()
+    cfg["screen_time"] = {"idle_threshold_seconds": -1}
+    with pytest.raises(ValueError, match="idle_threshold_seconds"):
+        validate_config(cfg)

@@ -1,16 +1,26 @@
 {
   "version": 1,
-  "revision": 5,
+  "revision": 6,
   "check_interval_seconds": 15,
   "log_browsing": true,
   "status_page": true,
   "status_port": 8743,
+  "screen_time": {
+    "enabled": true,
+    "poll_interval_seconds": 10,
+    "idle_threshold_seconds": 120,
+    "max_countable_interval_seconds": 30
+  },
   "resources": {
     "roblox": {
       "enabled": true,
       "display_name": "Roblox",
       "type": "app",
       "process_pattern": "Roblox",
+      "bundle_ids": [
+        "com.roblox.RobloxPlayer",
+        "com.roblox.Roblox"
+      ],
       "policy": {
         "default": {
           "daily_limit_minutes": 45,
@@ -87,6 +97,67 @@
               }
             ]
           }
+        }
+      }
+    },
+    "cursor": {
+      "enabled": true,
+      "display_name": "Cursor",
+      "type": "app",
+      "process_pattern": "Cursor",
+      "bundle_ids": [
+        "com.todesktop.230313mzl4w4u92"
+      ],
+      "policy": {
+        "default": {
+          "daily_limit_minutes": 0
+        }
+      }
+    },
+    "visual_studio": {
+      "enabled": true,
+      "display_name": "Visual Studio",
+      "type": "app",
+      "process_pattern": "Visual Studio",
+      "bundle_ids": [
+        "com.microsoft.VSCode",
+        "com.microsoft.VSCodeInsiders",
+        "com.microsoft.visual-studio"
+      ],
+      "policy": {
+        "default": {
+          "daily_limit_minutes": 0
+        }
+      }
+    },
+    "chrome": {
+      "enabled": true,
+      "display_name": "Chrome",
+      "type": "app",
+      "process_pattern": "Google Chrome",
+      "bundle_ids": [
+        "com.google.Chrome",
+        "com.google.Chrome.beta",
+        "com.google.Chrome.canary"
+      ],
+      "policy": {
+        "default": {
+          "daily_limit_minutes": 0
+        }
+      }
+    },
+    "pycharm": {
+      "enabled": true,
+      "display_name": "PyCharm",
+      "type": "app",
+      "process_pattern": "PyCharm",
+      "bundle_ids": [
+        "com.jetbrains.pycharm",
+        "com.jetbrains.pycharm.ce"
+      ],
+      "policy": {
+        "default": {
+          "daily_limit_minutes": 0
         }
       }
     },

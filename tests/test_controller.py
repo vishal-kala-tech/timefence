@@ -732,3 +732,55 @@ def test_browse_log_can_be_disabled(app_dir, monkeypatch):
 
     inspect.assert_not_called()
     assert not (app_dir / "state" / "browse").exists()
+
+
+def test_screen_time_counts_elapsed_for_bundle_app(app_dir, monkeypatch):
+    from timefence.models.activity import FrontmostApp, Observation
+
+    times = [
+        datetime(2024, 1, 15, 16, 30, 0),
+        datetime(2024, 1, 15, 16, 30, 10),
+    ]
+    idx = {"n": 0}
+
+    def now():
+        return times[min(idx["n"], len(times) - 1)]
+
+    monkeypatch.setattr(controller, "_now", now)
+    monkeypatch.setattr(
+        controller.MacOSActivityMonitor,
+        "capture",
+        lambda self, now=None: Observation(
+            timestamp=now,
+            idle_seconds=0,
+            screen_locked=False,
+            frontmost=FrontmostApp("Roblox", "com.roblox.RobloxPlayer", 99),
+        ),
+    )
+    modules = install_modules(monkeypatch, roblox=True)
+    modules["roblox"].inspect = MagicMock(return_value={"foreground": True})
+    write_rules(
+        app_dir,
+        make_config(
+            resources={
+                "roblox": make_resource(
+                    enabled=True,
+                    type="app",
+                    bundle_ids=["com.roblox.RobloxPlayer"],
+                )
+            }
+        ),
+    )
+
+    slept, sleep = stop_after(2)
+
+    def sleep_and_advance(seconds):
+        idx["n"] += 1
+        return sleep(seconds)
+
+    monkeypatch.setattr(controller.time, "sleep", sleep_and_advance)
+    with pytest.raises(LoopStop):
+        controller.run(app_dir)
+
+    assert get_usage(app_dir / "state", "roblox", now=times[1]) == 10
+    modules["roblox"].enforce.assert_not_called()

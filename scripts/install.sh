@@ -60,6 +60,7 @@ cp "$SRC/config/rules.example.json" "$EXAMPLE"
 
 if [ -f "$RULES" ]; then
     echo "Keeping existing $RULES"
+    echo "  (install does not overwrite parent-edited rules; copy new apps/bundle_ids from $EXAMPLE if needed)"
 else
     echo "Copying $SRC/config/rules.json -> $RULES"
     cp "$SRC/config/rules.json" "$RULES"

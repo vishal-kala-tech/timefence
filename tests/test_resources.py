@@ -322,3 +322,39 @@ def test_lookup_metadata_retries_failed_fetch(monkeypatch):
     monkeypatch.setattr(youtube, "fetch_oembed", lambda _url: results.pop(0))
     assert youtube.lookup_metadata("dQw4w9WgXcQ") is None
     assert youtube.lookup_metadata("dQw4w9WgXcQ")["channel"] == "Rick Astley"
+
+
+def test_generic_app_inspect_uses_bundle_id(monkeypatch):
+    from timefence.models.activity import FrontmostApp
+    from timefence.resources import app as app_resource
+
+    monkeypatch.setattr(app_resource, "_process_running", lambda _resource: False)
+    monkeypatch.setattr(app_resource, "_bundle_running", lambda _resource: True)
+    monkeypatch.setattr(
+        app_resource,
+        "frontmost_application",
+        lambda: FrontmostApp("Discord", "com.hnc.Discord", 44),
+    )
+    resource = {"bundle_ids": ["com.hnc.Discord"]}
+    assert app_resource.inspect(resource)["foreground"] is True
+    assert app_resource.is_active(resource) is True
+
+
+def test_generic_app_inspect_background_is_not_active(monkeypatch):
+    from timefence.models.activity import FrontmostApp
+    from timefence.resources import app as app_resource
+
+    monkeypatch.setattr(app_resource, "is_running", lambda _resource: True)
+    monkeypatch.setattr(
+        app_resource,
+        "frontmost_application",
+        lambda: FrontmostApp("Google Chrome", "com.google.Chrome", 8),
+    )
+    resource = {"bundle_ids": ["com.hnc.Discord"]}
+    assert app_resource.inspect(resource) == {
+        "foreground": False,
+        "app_name": "Google Chrome",
+        "bundle_id": "com.google.Chrome",
+        "pid": 8,
+    }
+    assert app_resource.is_active(resource) is False

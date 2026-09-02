@@ -145,7 +145,11 @@ def test_matching_window_returns_first_match():
 
 def test_allowed_now_false_when_no_windows():
     assert allowed_now({"allowed_windows": []}, now=datetime(2024, 1, 15, 17, 0)) is False
-    assert allowed_now({}, now=datetime(2024, 1, 15, 17, 0)) is False
+
+
+def test_allowed_now_true_when_schedule_is_unrestricted():
+    assert allowed_now({}, now=datetime(2024, 1, 15, 17, 0)) is True
+    assert allowed_now({"daily_limit_minutes": 30}, now=datetime(2024, 1, 15, 17, 0)) is True
 
 
 def test_evaluate_blocks_outside_window():
@@ -215,3 +219,14 @@ def test_evaluate_zero_limits_mean_no_cap():
     state = {"total_usage_seconds": 10_000, "windows": {"all_day": {"usage_seconds": 10_000}}}
     decision = evaluate(policy, state, now=datetime(2024, 1, 15, 12, 0))
     assert decision.allowed is True
+
+
+def test_evaluate_unrestricted_schedule_uses_daily_limit_only():
+    policy = {"daily_limit_minutes": 30}
+    now = datetime(2024, 1, 15, 3, 0)
+    allowed = evaluate(policy, {"total_usage_seconds": 10 * 60}, now=now)
+    assert allowed.allowed is True
+    assert allowed.window is None
+    blocked = evaluate(policy, {"total_usage_seconds": 30 * 60}, now=now)
+    assert blocked.allowed is False
+    assert blocked.reason == "daily_limit"

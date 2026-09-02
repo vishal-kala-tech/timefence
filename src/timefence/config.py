@@ -77,7 +77,7 @@ def validate_day_policy(policy, field):
 
     windows = policy.get("allowed_windows")
     if windows is None:
-        raise ValueError(f"{field}.allowed_windows is required")
+        return
     if not isinstance(windows, list):
         raise ValueError(f"{field}.allowed_windows must be an array")
 
@@ -99,7 +99,11 @@ def validate_resource(name, resource):
     if display_name is not None and (not isinstance(display_name, str) or not display_name.strip()):
         raise ValueError(f"Resource {name!r} display_name must be a non-empty string")
 
-    for field in ("url_contains", "url_excludes"):
+    resource_type = resource.get("type")
+    if resource_type is not None and (not isinstance(resource_type, str) or not resource_type.strip()):
+        raise ValueError(f"Resource {name!r} type must be a non-empty string")
+
+    for field in ("url_contains", "url_excludes", "bundle_ids"):
         values = resource.get(field)
         if values is None:
             continue
@@ -168,10 +172,48 @@ def validate_config(cfg):
         if isinstance(port, bool) or not isinstance(port, int) or not (1 <= port <= 65535):
             raise ValueError("status_port must be an integer from 1 to 65535")
 
+    _validate_screen_time(cfg.get("screen_time"))
+
     for name, resource in resources.items():
         validate_resource(name, resource)
 
     return cfg
+
+
+def _validate_screen_time(screen_time):
+    if screen_time is None:
+        return
+    if not isinstance(screen_time, dict):
+        raise ValueError("screen_time must be an object")
+    if "enabled" in screen_time and not isinstance(screen_time.get("enabled"), bool):
+        raise ValueError("screen_time.enabled must be a boolean")
+    if "poll_interval_seconds" in screen_time:
+        _positive_number(screen_time["poll_interval_seconds"], "screen_time.poll_interval_seconds")
+    if "idle_threshold_seconds" in screen_time:
+        _non_negative_number(screen_time["idle_threshold_seconds"], "screen_time.idle_threshold_seconds")
+    if "max_countable_interval_seconds" in screen_time:
+        _positive_number(
+            screen_time["max_countable_interval_seconds"],
+            "screen_time.max_countable_interval_seconds",
+        )
+
+
+def screen_time_settings(cfg):
+    from .tracking.usage_tracker import DEFAULT_IDLE_THRESHOLD_SECONDS, MAX_COUNTABLE_INTERVAL_SECONDS, ScreenTimeSettings
+
+    raw = cfg.get("screen_time") if isinstance(cfg, dict) else None
+    raw = raw if isinstance(raw, dict) else {}
+    poll = raw.get("poll_interval_seconds")
+    if poll is None:
+        poll = (cfg or {}).get("check_interval_seconds", 15)
+    return ScreenTimeSettings(
+        enabled=bool(raw.get("enabled", True)),
+        poll_interval_seconds=int(poll),
+        idle_threshold_seconds=float(raw.get("idle_threshold_seconds", DEFAULT_IDLE_THRESHOLD_SECONDS)),
+        max_countable_interval_seconds=float(
+            raw.get("max_countable_interval_seconds", MAX_COUNTABLE_INTERVAL_SECONDS)
+        ),
+    )
 
 
 def load_config(path: Path) -> dict:

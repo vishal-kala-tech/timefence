@@ -216,7 +216,13 @@ def matching_window(policy, now=None):
     return None
 
 
+def schedule_unrestricted(policy):
+    return not isinstance(policy, dict) or "allowed_windows" not in policy
+
+
 def allowed_now(policy, now=None):
+    if schedule_unrestricted(policy):
+        return True
     return matching_window(policy, now=now) is not None
 
 
@@ -225,14 +231,20 @@ def evaluate(policy, state, now=None, grant=None):
 
     now = now or datetime.now()
     grant = grants.active_grant(grant, now=now)
+    used = int((state or {}).get("total_usage_seconds", 0))
+    daily_limit = grants.effective_daily_limit(policy, grant, now=now)
+
+    if schedule_unrestricted(policy):
+        if daily_limit and used >= daily_limit:
+            return Evaluation(False, "daily_limit")
+        return Evaluation(True, "ok")
+
     window = matching_window(policy, now=now)
     if window is None:
         window = grants.bonus_window(grant, now=now)
         if window is None:
             return Evaluation(False, "outside_window")
 
-    used = int((state or {}).get("total_usage_seconds", 0))
-    daily_limit = grants.effective_daily_limit(policy, grant, now=now)
     if daily_limit and used >= daily_limit:
         return Evaluation(False, "daily_limit", window)
 
