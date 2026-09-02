@@ -63,7 +63,7 @@ def test_foreground_transition_closes_roblox_session(tmp_path):
     tr.apply(observation(t2, CHROME_BUNDLE, app_name="Google Chrome"), cfg, SETTINGS)
     tr.apply(observation(t3, CHROME_BUNDLE, app_name="Google Chrome"), cfg, SETTINGS)
     assert tr.get_current_session("roblox") is None
-    assert tr.get_current_activity() is None
+    assert tr.get_current_activity()["resource_id"] == CHROME_BUNDLE
     usage = tr.get_today_usage("roblox", resource=cfg["roblox"], now=t3)
     assert usage.used_seconds == 20
     assert usage.currently_active is False
@@ -151,6 +151,7 @@ def test_background_app_does_not_count(tmp_path):
     tr.apply(observation(t3, CHROME_BUNDLE, app_name="Google Chrome"), cfg, SETTINGS)
     assert tr.get_today_usage("roblox", now=t3).used_seconds == 20
     assert tr.get_today_usage("discord", now=t3).used_seconds == 0
+    assert tr.get_today_usage(CHROME_BUNDLE, now=t3).used_seconds == 10
 
 
 def test_never_counts_two_resources_at_once(tmp_path):
@@ -262,3 +263,19 @@ def test_website_activity_can_feed_the_same_tracker(tmp_path):
     tr.apply(Observation(timestamp=t1, idle_seconds=0, activity=activity), cfg, SETTINGS)
     assert tr.get_today_usage("youtube", now=t1).used_seconds == 10
     assert tr.get_today_usage("roblox", now=t1).used_seconds == 0
+
+
+def test_unlisted_foreground_app_is_recorded_under_bundle_id(tmp_path):
+    tr = tracker(tmp_path)
+    cfg = resources()
+    t0 = START
+    t1 = t0 + timedelta(seconds=10)
+    t2 = t1 + timedelta(seconds=10)
+    finder = "com.apple.finder"
+    tr.apply(observation(t0, finder, app_name="Finder"), cfg, SETTINGS)
+    tr.apply(observation(t1, finder, app_name="Finder"), cfg, SETTINGS)
+    tr.apply(observation(t2, finder, app_name="Finder"), cfg, SETTINGS)
+    assert tr.get_today_usage(finder, now=t2).used_seconds == 20
+    assert tr.get_current_activity()["resource_id"] == finder
+    assert tr.get_current_activity()["identifier"] == finder
+    assert tr.get_today_usage("roblox", now=t2).used_seconds == 0

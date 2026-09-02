@@ -64,12 +64,12 @@ Each cycle:
 
 1. Load and validate `config/rules.json`. On invalid JSON, keep the last valid config.
 2. Optionally log the frontmost browser tab (`log_browsing`).
-3. If screen-time capture is enabled and any resource is an app (`type: "app"` or `bundle_ids`):
+3. If screen-time capture is enabled:
    - Snapshot frontmost app + idle + lock.
-   - Match bundle ID to a resource.
+   - Match bundle ID to a listed resource, or use the bundle ID as the usage key.
    - Credit **actual elapsed seconds** since the previous poll (not the configured interval).
    - Write SQLite, then add the same seconds to the JSON usage file.
-   - Evaluate policy and emit warnings.
+   - Evaluate policy and emit warnings only for listed resources.
 4. For each resource:
    - **App capture resources:** enforce only if the process is still running and policy says block. Do not add usage again.
    - **Website resources (YouTube):** existing inspect → evaluate → add interval seconds if allowed → enforce.
@@ -81,7 +81,7 @@ Poll interval is `screen_time.poll_interval_seconds` when set, otherwise `check_
 
 ### What counts
 
-Only the **frontmost** configured app, and only while:
+Only the **frontmost** app, and only while:
 
 - the user has not been idle longer than `idle_threshold_seconds` (HID keyboard/mouse, default 120s)
 - the screen does not look locked (`loginwindow` / screensaver bundle, or an injected lock flag)
@@ -89,7 +89,7 @@ Only the **frontmost** configured app, and only while:
 
 The last rule is the sleep/suspension guard. A 10-minute gap after lid-close is an interruption, not 10 minutes of Roblox.
 
-Two configured apps never accumulate at once. If Roblox is running in the background and Chrome is frontmost, only Chrome (if configured) is counted.
+Two configured apps never accumulate at once. If Roblox is running in the background and Chrome is frontmost, only Chrome is counted. Apps not listed in `rules.json` are stored under their bundle ID; they never consume a listed app's budget and are never blocked.
 
 ### Identification
 
@@ -99,7 +99,7 @@ On macOS, bundle ID is canonical (`bundle_ids`). On Windows/Linux, put identifie
 frontmost app id  →  find_resource_by_app_id(resources)
 ```
 
-Unknown bundle IDs produce a frontmost log with `resource=none` and do not start a session.
+Unknown bundle IDs are still recorded. SQLite `resource_id` is the bundle ID (e.g. `com.apple.finder`). Policy, warnings, and blocks apply only to names listed in `rules.json`.
 
 Shipped app IDs:
 
@@ -229,7 +229,7 @@ Look in **`timefence.err.log`**. Python `INFO` is stderr.
 |---|---|
 | `Loaded config revision N` | Live `rules.json` revision changed |
 | `SCREEN_TIME_ENABLED` | Same; lists poll interval, idle threshold, app resource ids |
-| `SCREEN_TIME_FRONTMOST` | Frontmost app **changed** (including unmatched `resource=none`) |
+| `SCREEN_TIME_FRONTMOST` | Frontmost app **changed** (`resource` is the rules.json name or the bundle ID) |
 | `SCREEN_TIME_SESSION_STARTED` / `_ENDED` | Configured resource session boundaries |
 | `SCREEN_TIME_USAGE` | Countable increment |
 | `SCREEN_TIME_IDLE` | Crossed idle threshold |

@@ -27,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import browse
-from .activity import create_activity_monitor, find_resource_by_bundle_id, uses_app_capture
+from .activity import create_activity_monitor, usage_id_for_activity, uses_app_capture
 from .config import load_config, screen_time_settings
 from .enforcement import EnforcementService
 from .grants import (
@@ -287,7 +287,18 @@ def _sync_screen_time_usage(name, resource, seconds, state_dir, now, tracker):
 
     Status page, grants, and warning persistence still read JSON. Dual-write
     keeps those surfaces correct without making them depend on SQLite.
+
+    `resource` is None for apps not listed in rules.json: persist usage only,
+    do not evaluate limits or send warnings.
     """
+    if not isinstance(resource, dict):
+        state = add_usage(state_dir, name, seconds, now=now)
+        logging.info(
+            "%s active usage=%ss (unlisted)",
+            name,
+            int(state.get("total_usage_seconds", 0)),
+        )
+        return state, None
     policy = resolve_policy(resource, now=now)
     window = matching_window(policy, now=now)
     window_id = window.get("id") if window else None
@@ -312,22 +323,22 @@ def _sync_screen_time_usage(name, resource, seconds, state_dir, now, tracker):
 
 
 def _tick_screen_time(cfg, settings, monitor, tracker, state_dir, now):
-    """Foreground app accounting for resources that use bundle-ID capture."""
-    if not settings.enabled or not _monitored_app_ids(cfg):
+    """Foreground app accounting for every frontmost app, listed or not."""
+    if not settings.enabled:
         return
     observation = monitor.capture(now)
     result = tracker.apply(observation, cfg.get("resources") or {}, settings)
     current = None
     if observation.frontmost and observation.frontmost.bundle_id:
-        match = find_resource_by_bundle_id(cfg.get("resources") or {}, observation.frontmost.bundle_id)
-        current = match[0] if match else None
+        current = usage_id_for_activity(
+            cfg.get("resources") or {},
+            observation.resolved_activity(),
+        )
     _log_frontmost(observation, current)
     if not result.increment_seconds or not result.resource_id:
         return
     name = result.resource_id
     resource = (cfg.get("resources") or {}).get(name)
-    if not isinstance(resource, dict):
-        return
     _sync_screen_time_usage(name, resource, result.increment_seconds, state_dir, now, tracker)
 
 

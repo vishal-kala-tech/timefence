@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, time
 from typing import Optional
 
-from ..activity.matching import find_resource_for_activity
+from ..activity.matching import usage_id_for_activity
 from ..grants import effective_daily_limit
 from ..models.activity import KIND_APP, Observation
 from ..models.usage import SessionRecord, TodayUsage, UsageSnapshot
@@ -100,6 +100,8 @@ class UsageTracker:
         - Credit the resource that was in front *during* the interval (the
           previous session), then switch session to whoever is in front now.
           A Roblox → Chrome poll therefore adds those seconds to Roblox.
+        - Listed apps use the rules.json name; any other foreground app is
+          stored under its bundle ID. Policy/blocks still apply only to listed apps.
         - First poll after start only opens a session (elapsed is 0).
         """
         now = observation.timestamp
@@ -118,8 +120,7 @@ class UsageTracker:
 
         # Idle/lock: do not resolve a resource, so nothing can start a session.
         activity = None if (idle or locked) else observation.resolved_activity()
-        match = find_resource_for_activity(resources, activity) if activity else None
-        current_id = match[0] if match else None
+        current_id = usage_id_for_activity(resources, activity) if activity else None
         bundle_id = ""
         if activity is not None:
             bundle_id = activity.identifier

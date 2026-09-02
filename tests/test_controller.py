@@ -39,6 +39,18 @@ def skip_browse_inspect(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def skip_activity_monitor(monkeypatch):
+    """Controller tests must not call real NSWorkspace/osascript."""
+    from timefence.models.activity import Observation
+
+    class QuietMonitor:
+        def capture(self, now=None):
+            return Observation(timestamp=now, idle_seconds=0, screen_locked=False, frontmost=None)
+
+    monkeypatch.setattr(controller, "create_activity_monitor", lambda: QuietMonitor())
+
+
+@pytest.fixture(autouse=True)
 def skip_status_page(monkeypatch):
     monkeypatch.setattr(controller, "_publish_status_page", lambda *args, **kwargs: None)
 

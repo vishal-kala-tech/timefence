@@ -15,6 +15,7 @@ from .matching import (
     find_resource_by_bundle_id,
     find_resource_by_url,
     find_resource_for_activity,
+    usage_id_for_activity,
     uses_app_capture,
 )
 
@@ -28,6 +29,7 @@ __all__ = [
     "find_resource_by_bundle_id",
     "find_resource_by_url",
     "find_resource_for_activity",
+    "usage_id_for_activity",
     "frontmost_application",
     "idle_seconds",
     "is_idle",

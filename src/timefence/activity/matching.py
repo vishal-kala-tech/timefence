@@ -107,7 +107,7 @@ def find_resource_by_url(resources, url):
 
 
 def find_resource_for_activity(resources, activity):
-    """Dispatch on Activity.kind. Unknown kinds count as unmatched (no usage)."""
+    """Dispatch on Activity.kind. Returns None when the app/URL is not in rules.json."""
     if activity is None:
         return None
     if not isinstance(activity, Activity):
@@ -117,6 +117,24 @@ def find_resource_for_activity(resources, activity):
     if activity.kind == KIND_WEBSITE:
         return find_resource_by_url(resources, activity.identifier)
     return None
+
+
+def usage_id_for_activity(resources, activity):
+    """Key used in SQLite/JSON for this observation.
+
+    Listed apps keep their rules.json name (`cursor`, `roblox`). Any other
+    foreground app is stored under its bundle ID so usage is not dropped.
+    Unmatched websites stay None (the YouTube adapter owns that path).
+    """
+    match = find_resource_for_activity(resources, activity)
+    if match:
+        return match[0]
+    if activity is None or activity.kind != KIND_APP:
+        return None
+    identifier = str(activity.identifier or "").strip()
+    if not identifier:
+        return None
+    return identifier.replace("/", "_").replace("\\", "_")
 
 
 def uses_app_capture(resource):

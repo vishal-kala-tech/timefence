@@ -1,4 +1,9 @@
-from timefence.activity import find_resource_by_bundle_id, find_resource_for_activity, uses_app_capture
+from timefence.activity import (
+    find_resource_by_bundle_id,
+    find_resource_for_activity,
+    usage_id_for_activity,
+    uses_app_capture,
+)
 from timefence.models.activity import KIND_APP, KIND_WEBSITE, Activity
 from tests.helpers import make_resource
 
@@ -57,6 +62,15 @@ def test_activity_dispatch_matches_app_and_future_website():
     assert find_resource_for_activity(RESOURCES, app)[0] == "roblox"
     web = Activity(kind=KIND_WEBSITE, identifier="https://www.youtube.com/watch?v=abc")
     assert find_resource_for_activity(RESOURCES, web)[0] == "youtube"
+
+
+def test_usage_id_uses_rules_name_or_bundle_id():
+    listed = Activity(kind=KIND_APP, identifier=ROBLOX, display_name="Roblox")
+    other = Activity(kind=KIND_APP, identifier="com.apple.finder", display_name="Finder")
+    web = Activity(kind=KIND_WEBSITE, identifier="https://example.com/")
+    assert usage_id_for_activity(RESOURCES, listed) == "roblox"
+    assert usage_id_for_activity(RESOURCES, other) == "com.apple.finder"
+    assert usage_id_for_activity(RESOURCES, web) is None
 
 
 def test_uses_app_capture_for_bundle_and_type_app():
