@@ -2,6 +2,7 @@ import json
 from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
+from timefence.tracking import SqliteUsageStore
 from timefence.usage import add_usage, get_usage, load_state, note_video
 
 
@@ -260,3 +261,47 @@ def test_usage_table_skips_browse_log(tmp_path):
     text = (tmp_path / "2024-01-15.txt").read_text(encoding="utf-8")
     assert "www.example.com" not in text
     assert "|browse|" not in text
+
+
+def test_add_usage_writes_window_seconds_to_sqlite(tmp_path):
+    when = datetime(2024, 1, 15, 16, 30)
+    add_usage(tmp_path, "roblox", 20, window_id="after_school", now=when)
+    add_usage(tmp_path, "roblox", 10, window_id="after_school", now=when)
+    store = SqliteUsageStore(tmp_path / "screen_time.sqlite")
+    assert store.get_windows("2024-01-15", "roblox") == {"after_school": 30}
+    assert get_usage(tmp_path, "roblox", window_id="after_school", now=when) == 30
+
+
+def test_load_state_prefers_sqlite_window_seconds_over_json(tmp_path):
+    when = datetime(2024, 1, 15, 16, 30)
+    add_usage(tmp_path, "roblox", 20, window_id="after_school", now=when)
+    path = tmp_path / "roblox" / "2024-01-15.json"
+    payload = json.loads(path.read_text())
+    payload["windows"]["after_school"]["usage_seconds"] = 999
+    path.write_text(json.dumps(payload))
+    assert get_usage(tmp_path, "roblox", window_id="after_school", now=when) == 20
+    assert load_state(tmp_path, "roblox", now=when)["windows"]["after_school"]["usage_seconds"] == 20
+
+
+def test_json_window_seconds_used_until_sqlite_has_rows(tmp_path):
+    when = datetime(2024, 1, 15, 16, 30)
+    path = tmp_path / "roblox" / "2024-01-15.json"
+    path.parent.mkdir()
+    path.write_text(
+        json.dumps(
+            {
+                "date": "2024-01-15",
+                "total_usage_seconds": 2100,
+                "windows": {
+                    "after_school": {"usage_seconds": 1800},
+                    "evening": {"usage_seconds": 300},
+                },
+            }
+        )
+    )
+    assert get_usage(tmp_path, "roblox", window_id="after_school", now=when) == 1800
+    add_usage(tmp_path, "roblox", 10, window_id="after_school", now=when)
+    assert get_usage(tmp_path, "roblox", window_id="after_school", now=when) == 1810
+    assert get_usage(tmp_path, "roblox", window_id="evening", now=when) == 300
+    store = SqliteUsageStore(tmp_path / "screen_time.sqlite")
+    assert store.get_windows("2024-01-15", "roblox") == {"after_school": 1810, "evening": 300}

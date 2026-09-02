@@ -1,18 +1,15 @@
 """SQLite implementation of UsageStore (`state/screen_time.sqlite`).
 
-Canonical store for app screen-time. JSON files under `state/<resource>/`
-are a dual-write for the status page and grants; do not treat this DB as
-optional for counting.
-
-Each method opens a short-lived connection so a crash does not leave a
-writer lock, and so the status server process is not required to share a
-handle. `record_warning` uses INSERT and treats IntegrityError as "already
-logged" (primary key on day + resource + key).
+Canonical store for daily totals, per-window totals, and sessions.
+`rules.json` still defines the windows (ids, hours, limits). JSON files under
+`state/<resource>/` keep YouTube videos and warning keys; window seconds are
+read from this database (legacy JSON window counters are used only if SQLite
+has no row yet).
 """
 
 import sqlite3
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from ..models.usage import DailyUsage, SessionRecord
 from .usage_store import UsageStore
@@ -41,6 +38,15 @@ CREATE TABLE IF NOT EXISTS warning_state (
     resource_id TEXT NOT NULL,
     warning_key TEXT NOT NULL,
     PRIMARY KEY (usage_date, resource_id, warning_key)
+);
+
+CREATE TABLE IF NOT EXISTS window_usage (
+    usage_date TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    window_id TEXT NOT NULL,
+    usage_seconds INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (usage_date, resource_id, window_id)
 );
 
 CREATE INDEX IF NOT EXISTS usage_sessions_open_idx
@@ -119,6 +125,47 @@ class SqliteUsageStore(UsageStore):
                 (usage_date,),
             ).fetchall()
         return [_row_daily(row) for row in rows]
+
+    def add_window_seconds(
+        self, usage_date: str, resource_id: str, window_id: str, seconds: int, updated_at: str
+    ) -> int:
+        seconds = max(0, int(seconds or 0))
+        window_id = str(window_id or "").strip()
+        if not window_id:
+            return 0
+        with self._connect() as conn:
+            conn.execute("BEGIN")
+            conn.execute(
+                """
+                INSERT INTO window_usage (usage_date, resource_id, window_id, usage_seconds, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(usage_date, resource_id, window_id) DO UPDATE SET
+                    usage_seconds = usage_seconds + excluded.usage_seconds,
+                    updated_at = excluded.updated_at
+                """,
+                (usage_date, resource_id, window_id, seconds, updated_at),
+            )
+            row = conn.execute(
+                """
+                SELECT usage_seconds FROM window_usage
+                WHERE usage_date = ? AND resource_id = ? AND window_id = ?
+                """,
+                (usage_date, resource_id, window_id),
+            ).fetchone()
+            conn.commit()
+        return int(row["usage_seconds"] if row else seconds)
+
+    def get_windows(self, usage_date: str, resource_id: str) -> Dict[str, int]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT window_id, usage_seconds FROM window_usage
+                WHERE usage_date = ? AND resource_id = ?
+                ORDER BY window_id
+                """,
+                (usage_date, resource_id),
+            ).fetchall()
+        return {str(row["window_id"]): int(row["usage_seconds"] or 0) for row in rows}
 
     def start_session(
         self,

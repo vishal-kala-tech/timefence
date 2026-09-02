@@ -22,7 +22,7 @@ Just before a block, TimeFence shows one 6-second countdown window (the remainin
 
 Optional `display_name` is used in notification text; otherwise the resource id is used.
 
-Usage is stored per calendar day, per resource, with totals and per-window counters keyed by window id. Changing a window's times does not reset its usage. Each save also writes a pipe-separated table for Excel at `state/YYYY-MM-DD.txt` (daily and window totals plus YouTube video rows). Import with delimiter `|`. `./scripts/budget.sh` prints allowed vs remaining time for each enabled resource.
+Usage is stored per calendar day, per resource. Daily totals stay in `state/<resource>/<date>.json`; per-window seconds are in `state/screen_time.sqlite` (`window_usage`, keyed by the `allowed_windows` id from `rules.json`). Changing a window's times does not reset its usage. Each save also writes a pipe-separated table for Excel at `state/YYYY-MM-DD.txt` (daily and window totals plus YouTube video rows). Import with delimiter `|`. `./scripts/budget.sh` prints allowed vs remaining time for each enabled resource.
 
 The child can check today's used and remaining time in a browser at `http://127.0.0.1:8743/` (only on that Mac). The page also lists the top 10 websites from today's frontmost-browser tab log. It refreshes every 15 seconds. `./scripts/today.sh` opens it. A copy is also written to `~/Library/Application Support/TimeFence/status.html`. Set `status_page` to `false` in `rules.json` to turn this off, or `status_port` to use a different localhost port.
 

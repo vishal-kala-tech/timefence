@@ -283,13 +283,11 @@ def _monitored_app_ids(cfg):
 
 
 def _sync_screen_time_usage(name, resource, seconds, state_dir, now, tracker):
-    """Copy SQLite-credited seconds into the JSON usage file and run policy.
+    """Copy SQLite-credited seconds into JSON (daily totals, YouTube) and run policy.
 
-    Status page, grants, and warning persistence still read JSON. Dual-write
-    keeps those surfaces correct without making them depend on SQLite.
-
-    `resource` is None for apps not listed in rules.json: persist usage only,
-    do not evaluate limits or send warnings.
+    Window counters go to SQLite via `add_usage`; `load_state` overlays them so
+    evaluate/status/grants still see `state["windows"]`. Unlisted apps persist
+    usage only and skip limits/warnings.
     """
     if not isinstance(resource, dict):
         state = add_usage(state_dir, name, seconds, now=now)

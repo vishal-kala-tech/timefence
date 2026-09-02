@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from ..models.usage import DailyUsage, SessionRecord
 
@@ -11,8 +11,10 @@ class UsageStore(ABC):
     a fake store and a later backend can replace the file without rewriting
     accounting rules.
 
-    Daily totals are keyed by local date string (`YYYY-MM-DD`). Open sessions
-    have `ended_at IS NULL`. `record_warning` is idempotent per (day, resource, key).
+    Daily totals are keyed by local date string (`YYYY-MM-DD`). Window totals
+    are keyed by the `allowed_windows[].id` from rules.json for that same date.
+    Open sessions have `ended_at IS NULL`. `record_warning` is idempotent per
+    (day, resource, key).
     """
 
     @abstractmethod
@@ -26,6 +28,16 @@ class UsageStore(ABC):
     @abstractmethod
     def get_all_daily(self, usage_date: str) -> List[DailyUsage]:
         pass
+
+    @abstractmethod
+    def add_window_seconds(
+        self, usage_date: str, resource_id: str, window_id: str, seconds: int, updated_at: str
+    ) -> int:
+        """Atomically add seconds to a day's window total. Returns the new window total."""
+
+    @abstractmethod
+    def get_windows(self, usage_date: str, resource_id: str) -> Dict[str, int]:
+        """Map window_id → usage_seconds for that resource and date."""
 
     @abstractmethod
     def start_session(

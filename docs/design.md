@@ -205,17 +205,20 @@ Background Roblox outside a window is still killed even though it did not consum
 
 ### SQLite — `state/screen_time.sqlite`
 
-Screen-time source of truth for sessions and app daily totals. Monitoring code depends on `UsageStore`, not SQLite, so the backend can be replaced.
+Source of truth for sessions, app daily totals, and per-window usage seconds. Window **definitions** (ids, hours, `limit_minutes`) stay in `rules.json`. Monitoring code depends on `UsageStore`, not SQLite, so the backend can be replaced.
 
 ```sql
 daily_usage (usage_date, resource_id, total_active_seconds, updated_at)
 usage_sessions (id, resource_id, started_at, ended_at, duration_seconds, activity_kind, identifier)
 warning_state (usage_date, resource_id, warning_key)   -- e.g. limit_reached once per day
+window_usage (usage_date, resource_id, window_id, usage_seconds, updated_at)
 ```
+
+`window_id` matches `allowed_windows[].id` in `rules.json`. `load_state()` overlays these seconds onto the JSON payload so policy, budget, and the status page keep reading `state["windows"]`.
 
 ### JSON — `state/<resource>/<YYYY-MM-DD>.json`
 
-Existing per-resource day files: `total_usage_seconds`, per-window counters, `warnings_sent`, YouTube `videos`. Status page, budget, grants, and website tracking still use these. Screen-time ticks dual-write here so those surfaces stay consistent.
+Existing per-resource day files: `total_usage_seconds`, `warnings_sent`, YouTube `videos`, and a cache of window seconds. Legacy JSON window counters are used only when SQLite has no `window_usage` rows for that day and resource yet. Status page, budget, grants, and website tracking still go through `load_state()`.
 
 `state/YYYY-MM-DD.txt` is a pipe-separated Excel export. `state/browse/` is the unrestricted frontmost-browser tab log (not a budget).
 

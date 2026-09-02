@@ -245,6 +245,15 @@ def test_limit_warning_recorded_once(tmp_path):
     assert store.has_warning("2026-08-31", "roblox", "limit_reached") is False
 
 
+def test_window_usage_accumulates_per_window(tmp_path):
+    store = SqliteUsageStore(tmp_path / "screen_time.sqlite")
+    assert store.add_window_seconds("2026-08-30", "roblox", "after_school", 20, START.isoformat()) == 20
+    assert store.add_window_seconds("2026-08-30", "roblox", "after_school", 10, START.isoformat()) == 30
+    assert store.add_window_seconds("2026-08-30", "roblox", "evening", 15, START.isoformat()) == 15
+    assert store.get_windows("2026-08-30", "roblox") == {"after_school": 30, "evening": 15}
+    assert store.get_windows("2026-08-31", "roblox") == {}
+
+
 def test_website_activity_can_feed_the_same_tracker(tmp_path):
     from timefence.models.activity import KIND_WEBSITE, Activity
 

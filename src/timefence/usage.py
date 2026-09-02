@@ -1,8 +1,9 @@
 """JSON usage files: `state/<resource>/<date>.json`.
 
-These remain the source of truth for the status page, grants, warnings, and
-the YouTube inspect path. Screen-time also writes SQLite, then dual-writes
-here so those surfaces do not need to know about the database.
+Daily totals, warning keys, and YouTube videos still live here. Per-window
+seconds are stored in `state/screen_time.sqlite` (`window_usage`); these JSON
+files keep a cache and leftover counters from before that table existed.
+`rules.json` still defines window ids, hours, and limits.
 
 One file per resource per local calendar day. Midnight does not erase
 history; it starts a new file. Corrupt JSON resets to empty for that day
@@ -238,16 +239,62 @@ def _normalize(data, now=None):
     }
 
 
+def _sqlite_path(state_dir):
+    return Path(state_dir) / "screen_time.sqlite"
+
+
+def _sqlite_store(state_dir):
+    from .tracking.sqlite_usage_store import SqliteUsageStore
+
+    return SqliteUsageStore(_sqlite_path(state_dir))
+
+
+def _updated_at(now=None):
+    if isinstance(now, datetime):
+        return now.replace(microsecond=0).isoformat()
+    return datetime.now().replace(microsecond=0).isoformat()
+
+
+def _overlay_window_usage(state, state_dir, resource, now=None):
+    """Prefer SQLite window seconds. Legacy JSON counters apply until a row exists."""
+    path = _sqlite_path(state_dir)
+    if not path.exists():
+        return state
+    sqlite_windows = _sqlite_store(state_dir).get_windows(_day(now).isoformat(), resource)
+    if not sqlite_windows:
+        return state
+    windows = state.setdefault("windows", {})
+    for window_id, seconds in sqlite_windows.items():
+        window = windows.setdefault(window_id, {"usage_seconds": 0, "warnings_sent": []})
+        window["usage_seconds"] = int(seconds)
+    return state
+
+
+def _add_window_seconds(state_dir, resource, window_id, seconds, now, json_windows):
+    """Write the increment to SQLite, seeding from JSON when this day has no window rows yet."""
+    store = _sqlite_store(state_dir)
+    usage_date = _day(now).isoformat()
+    stamp = _updated_at(now)
+    if not store.get_windows(usage_date, resource):
+        for other_id, payload in (json_windows or {}).items():
+            seed = int((payload or {}).get("usage_seconds", 0) or 0)
+            if seed:
+                store.add_window_seconds(usage_date, resource, other_id, seed, stamp)
+    return store.add_window_seconds(usage_date, resource, window_id, int(seconds), stamp)
+
+
 def load_state(state_dir, resource, now=None):
     """Today's usage for one resource. Missing or corrupt file → empty totals, not an error."""
     path = _path(state_dir, resource, now=now)
     if not path.exists():
-        return empty_state(now)
-    try:
-        return _normalize(json.loads(path.read_text()), now=now)
-    except (OSError, ValueError, TypeError) as exc:
-        logging.warning("Corrupt usage state for %s (%s); resetting", resource, exc)
-        return empty_state(now)
+        state = empty_state(now)
+    else:
+        try:
+            state = _normalize(json.loads(path.read_text()), now=now)
+        except (OSError, ValueError, TypeError) as exc:
+            logging.warning("Corrupt usage state for %s (%s); resetting", resource, exc)
+            state = empty_state(now)
+    return _overlay_window_usage(state, state_dir, resource, now=now)
 
 
 def _save(path, state):
@@ -270,14 +317,16 @@ def get_usage(state_dir, resource, window_id=None, now=None):
 
 
 def add_usage(state_dir, resource, seconds, window_id=None, now=None, video=None):
-    """Increment today's JSON totals. `window_id` None still adds to the daily total."""
+    """Increment today's daily JSON total and, when set, the SQLite window counter."""
     path = _path(state_dir, resource, now=now)
     state = load_state(state_dir, resource, now=now)
     state["date"] = _day(now).isoformat()
     state["total_usage_seconds"] = int(state["total_usage_seconds"]) + int(seconds)
     if window_id:
+        json_windows = dict(state.get("windows") or {})
+        total = _add_window_seconds(state_dir, resource, window_id, int(seconds), now, json_windows)
         window = state["windows"].setdefault(window_id, {"usage_seconds": 0, "warnings_sent": []})
-        window["usage_seconds"] = int(window.get("usage_seconds", 0)) + int(seconds)
+        window["usage_seconds"] = total
         window.setdefault("warnings_sent", [])
     if video:
         _append_watch(state, video, seconds, now)
