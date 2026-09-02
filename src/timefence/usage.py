@@ -1,9 +1,9 @@
 """JSON usage files: `state/<resource>/<date>.json`.
 
-Daily totals, warning keys, and YouTube videos still live here. Per-window
-seconds are stored in `state/screen_time.sqlite` (`window_usage`); these JSON
-files keep a cache and leftover counters from before that table existed.
-`rules.json` still defines window ids, hours, and limits.
+Daily totals, warning keys, and a cache of YouTube videos still live here.
+Per-window seconds, browser visits, and watch rows are stored in
+`state/screen_time.sqlite`. `rules.json` still defines window ids, hours, and
+limits.
 
 One file per resource per local calendar day. Midnight does not erase
 history; it starts a new file. Corrupt JSON resets to empty for that day
@@ -270,6 +270,31 @@ def _overlay_window_usage(state, state_dir, resource, now=None):
     return state
 
 
+def _overlay_watches(state, state_dir, resource, now=None):
+    """Prefer SQLite watch rows. Copy leftover JSON videos when that resource/date has no rows yet."""
+    store = _sqlite_store(state_dir)
+    usage_date = _day(now).isoformat()
+    videos = store.get_watches(usage_date, resource)
+    if not videos:
+        store.seed_watches(usage_date, resource, state.get("videos") or [])
+        videos = store.get_watches(usage_date, resource)
+    if videos:
+        state["videos"] = videos
+    return state
+
+
+def _record_watch(state_dir, resource, video, seconds, now, json_videos):
+    store = _sqlite_store(state_dir)
+    usage_date = _day(now).isoformat()
+    store.seed_watches(usage_date, resource, json_videos)
+    result = store.add_watch(
+        usage_date, resource, video, int(seconds), _timestamp(now), max_rows=MAX_VIDEOS
+    )
+    if result == "full":
+        logging.warning("Watch history full (%s); not adding %s", MAX_VIDEOS, (video or {}).get("id"))
+    return store.get_watches(usage_date, resource)
+
+
 def _add_window_seconds(state_dir, resource, window_id, seconds, now, json_windows):
     """Write the increment to SQLite, seeding from JSON when this day has no window rows yet."""
     store = _sqlite_store(state_dir)
@@ -294,7 +319,7 @@ def load_state(state_dir, resource, now=None):
         except (OSError, ValueError, TypeError) as exc:
             logging.warning("Corrupt usage state for %s (%s); resetting", resource, exc)
             state = empty_state(now)
-    return _overlay_window_usage(state, state_dir, resource, now=now)
+    return _overlay_watches(_overlay_window_usage(state, state_dir, resource, now=now), state_dir, resource, now=now)
 
 
 def _save(path, state):
@@ -329,7 +354,9 @@ def add_usage(state_dir, resource, seconds, window_id=None, now=None, video=None
         window["usage_seconds"] = total
         window.setdefault("warnings_sent", [])
     if video:
-        _append_watch(state, video, seconds, now)
+        state["videos"] = _record_watch(
+            state_dir, resource, video, seconds, now, list(state.get("videos") or [])
+        )
     _save(path, state)
     return state
 
@@ -338,7 +365,7 @@ def note_video(state_dir, resource, video, now=None):
     path = _path(state_dir, resource, now=now)
     state = load_state(state_dir, resource, now=now)
     state["date"] = _day(now).isoformat()
-    _append_watch(state, video, 0, now)
+    state["videos"] = _record_watch(state_dir, resource, video, 0, now, list(state.get("videos") or []))
     _save(path, state)
     return state
 

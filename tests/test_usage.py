@@ -305,3 +305,48 @@ def test_json_window_seconds_used_until_sqlite_has_rows(tmp_path):
     assert get_usage(tmp_path, "roblox", window_id="evening", now=when) == 300
     store = SqliteUsageStore(tmp_path / "screen_time.sqlite")
     assert store.get_windows("2024-01-15", "roblox") == {"after_school": 1810, "evening": 300}
+
+
+def test_add_usage_writes_watch_history_to_sqlite(tmp_path):
+    when = datetime(2024, 1, 15, 16, 30, 0)
+    later = datetime(2024, 1, 15, 16, 30, 15)
+    video = {
+        "id": "aaaaaaaaaaa",
+        "title": "First",
+        "channel": "Channel A",
+        "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+    }
+    add_usage(tmp_path, "youtube", 15, window_id="evening", now=when, video=video)
+    add_usage(tmp_path, "youtube", 15, window_id="evening", now=later, video=video)
+    store = SqliteUsageStore(tmp_path / "screen_time.sqlite")
+    watches = store.get_watches("2024-01-15", "youtube")
+    assert len(watches) == 1
+    assert watches[0]["id"] == "aaaaaaaaaaa"
+    assert watches[0]["usage_seconds"] == 30
+    assert watches[0]["last_seen"] == "16:30:15"
+
+
+def test_json_videos_are_seeded_into_sqlite(tmp_path):
+    when = datetime(2024, 1, 15, 16, 30)
+    path = tmp_path / "youtube" / "2024-01-15.json"
+    path.parent.mkdir()
+    path.write_text(
+        json.dumps(
+            {
+                "date": "2024-01-15",
+                "total_usage_seconds": 15,
+                "videos": [
+                    {
+                        "id": "aaaaaaaaaaa",
+                        "title": "First",
+                        "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+                        "usage_seconds": 15,
+                    }
+                ],
+            }
+        )
+    )
+    state = load_state(tmp_path, "youtube", now=when)
+    assert [item["id"] for item in state["videos"]] == ["aaaaaaaaaaa"]
+    store = SqliteUsageStore(tmp_path / "screen_time.sqlite")
+    assert store.get_watches("2024-01-15", "youtube")[0]["usage_seconds"] == 15

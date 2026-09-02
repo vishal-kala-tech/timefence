@@ -212,15 +212,17 @@ daily_usage (usage_date, resource_id, total_active_seconds, updated_at)
 usage_sessions (id, resource_id, started_at, ended_at, duration_seconds, activity_kind, identifier)
 warning_state (usage_date, resource_id, warning_key)   -- e.g. limit_reached once per day
 window_usage (usage_date, resource_id, window_id, usage_seconds, updated_at)
+browse_visits (id, usage_date, host, url, title, first_seen, last_seen, usage_seconds, browser)
+watch_history (id, usage_date, resource_id, video_id, title, channel, url, first_seen, last_seen, usage_seconds)
 ```
 
-`window_id` matches `allowed_windows[].id` in `rules.json`. `load_state()` overlays these seconds onto the JSON payload so policy, budget, and the status page keep reading `state["windows"]`.
+`window_id` matches `allowed_windows[].id` in `rules.json`. `load_state()` overlays window seconds and YouTube watches onto the JSON payload so policy, budget, and the status page keep reading `state["windows"]` and `state["videos"]`. Front-tab history (Chrome, Safari, YouTube URLs, other sites) is `browse_visits`; `load_browse_state()` overlays those rows.
 
 ### JSON — `state/<resource>/<YYYY-MM-DD>.json`
 
-Existing per-resource day files: `total_usage_seconds`, `warnings_sent`, YouTube `videos`, and a cache of window seconds. Legacy JSON window counters are used only when SQLite has no `window_usage` rows for that day and resource yet. Status page, budget, grants, and website tracking still go through `load_state()`.
+Existing per-resource day files: `total_usage_seconds`, `warnings_sent`, YouTube `videos`, and a cache of window seconds. Legacy JSON window counters, visits, and videos are copied into SQLite when that day has no rows yet. Status page, budget, grants, and website tracking still go through `load_state()` / `load_browse_state()`.
 
-`state/YYYY-MM-DD.txt` is a pipe-separated Excel export. `state/browse/` is the unrestricted frontmost-browser tab log (not a budget).
+`state/YYYY-MM-DD.txt` is a pipe-separated Excel export. `state/browse/` remains a JSON cache of the unrestricted frontmost-browser tab log (not a budget).
 
 Query helpers on `UsageTracker`: `get_today_usage`, `get_all_today_usage`, `get_remaining_seconds`, `get_current_activity`, `get_current_session`.
 

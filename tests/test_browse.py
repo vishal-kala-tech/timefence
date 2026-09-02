@@ -132,3 +132,92 @@ def test_top_sites_skips_localhost_status_page(tmp_path):
     )
     ranked = browse.top_sites(tmp_path, now=now)
     assert [item["host"] for item in ranked] == ["example.com"]
+
+
+def test_note_visit_writes_browse_visits_to_sqlite(tmp_path):
+    from datetime import datetime
+
+    from timefence.tracking import SqliteUsageStore
+
+    t0 = datetime(2024, 1, 15, 16, 30, 0)
+    t1 = datetime(2024, 1, 15, 16, 30, 15)
+    browse.note_visit(
+        tmp_path,
+        {
+            "host": "www.youtube.com",
+            "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+            "title": "Loki",
+            "browser": "chrome",
+        },
+        15,
+        now=t0,
+    )
+    browse.note_visit(
+        tmp_path,
+        {
+            "host": "www.youtube.com",
+            "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+            "title": "Loki",
+            "browser": "chrome",
+        },
+        15,
+        now=t1,
+    )
+    store = SqliteUsageStore(tmp_path / "screen_time.sqlite")
+    visits = store.get_browse_visits("2024-01-15")
+    assert len(visits) == 1
+    assert visits[0]["host"] == "www.youtube.com"
+    assert visits[0]["usage_seconds"] == 30
+    assert visits[0]["browser"] == "chrome"
+    assert visits[0]["last_seen"] == "16:30:15"
+
+
+def test_load_browse_state_prefers_sqlite_over_json(tmp_path):
+    from datetime import datetime
+    import json
+
+    when = datetime(2024, 1, 15, 16, 30)
+    browse.note_visit(
+        tmp_path,
+        {"host": "example.com", "url": "https://example.com/", "title": "Example"},
+        15,
+        now=when,
+    )
+    path = tmp_path / "browse" / "2024-01-15.json"
+    payload = json.loads(path.read_text())
+    payload["visits"][0]["usage_seconds"] = 999
+    path.write_text(json.dumps(payload))
+    state = browse.load_browse_state(tmp_path, now=when)
+    assert state["visits"][0]["usage_seconds"] == 15
+
+
+def test_json_browse_visits_are_seeded_into_sqlite(tmp_path):
+    from datetime import datetime
+    import json
+
+    from timefence.tracking import SqliteUsageStore
+
+    when = datetime(2024, 1, 15, 16, 30)
+    path = tmp_path / "browse" / "2024-01-15.json"
+    path.parent.mkdir()
+    path.write_text(
+        json.dumps(
+            {
+                "date": "2024-01-15",
+                "visits": [
+                    {
+                        "host": "www.youtube.com",
+                        "url": "https://www.youtube.com/watch?v=abc",
+                        "title": "Clip",
+                        "first_seen": "16:00:00",
+                        "last_seen": "16:00:30",
+                        "usage_seconds": 30,
+                    }
+                ],
+            }
+        )
+    )
+    state = browse.load_browse_state(tmp_path, now=when)
+    assert state["visits"][0]["usage_seconds"] == 30
+    store = SqliteUsageStore(tmp_path / "screen_time.sqlite")
+    assert store.get_browse_visits("2024-01-15")[0]["url"] == "https://www.youtube.com/watch?v=abc"

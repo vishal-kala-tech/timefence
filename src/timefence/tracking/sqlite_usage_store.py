@@ -1,10 +1,9 @@
 """SQLite implementation of UsageStore (`state/screen_time.sqlite`).
 
-Canonical store for daily totals, per-window totals, and sessions.
-`rules.json` still defines the windows (ids, hours, limits). JSON files under
-`state/<resource>/` keep YouTube videos and warning keys; window seconds are
-read from this database (legacy JSON window counters are used only if SQLite
-has no row yet).
+Canonical store for daily totals, per-window totals, sessions, browser visits,
+and YouTube watches. `rules.json` still defines the windows (ids, hours, limits).
+JSON files under `state/<resource>/` keep warning keys and a cache of the rest;
+legacy JSON counters/visits are used only if SQLite has no row yet.
 """
 
 import sqlite3
@@ -49,9 +48,41 @@ CREATE TABLE IF NOT EXISTS window_usage (
     PRIMARY KEY (usage_date, resource_id, window_id)
 );
 
+CREATE TABLE IF NOT EXISTS browse_visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usage_date TEXT NOT NULL,
+    host TEXT NOT NULL,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    usage_seconds INTEGER NOT NULL DEFAULT 0,
+    browser TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS watch_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usage_date TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    video_id TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    channel TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    usage_seconds INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS usage_sessions_open_idx
     ON usage_sessions (resource_id, ended_at);
+CREATE INDEX IF NOT EXISTS browse_visits_date_idx
+    ON browse_visits (usage_date, id);
+CREATE INDEX IF NOT EXISTS watch_history_date_idx
+    ON watch_history (usage_date, resource_id, id);
 """
+
+MAX_BROWSE_VISITS = 5000
+MAX_WATCHES = 5000
 
 
 def _row_daily(row) -> DailyUsage:
@@ -61,6 +92,33 @@ def _row_daily(row) -> DailyUsage:
         total_active_seconds=int(row["total_active_seconds"] or 0),
         updated_at=row["updated_at"],
     )
+
+
+def _row_visit(row) -> dict:
+    entry = {
+        "host": row["host"] or "",
+        "url": row["url"] or "",
+        "title": row["title"] or "",
+        "first_seen": row["first_seen"] or "",
+        "last_seen": row["last_seen"] or "",
+        "usage_seconds": int(row["usage_seconds"] or 0),
+    }
+    browser = str(row["browser"] or "").strip()
+    if browser:
+        entry["browser"] = browser
+    return entry
+
+
+def _row_watch(row) -> dict:
+    return {
+        "id": row["video_id"] or "",
+        "title": row["title"] or "",
+        "channel": row["channel"] or "",
+        "url": row["url"] or "",
+        "first_seen": row["first_seen"] or "",
+        "last_seen": row["last_seen"] or "",
+        "usage_seconds": int(row["usage_seconds"] or 0),
+    }
 
 
 def _row_session(row) -> SessionRecord:
@@ -242,3 +300,195 @@ class SqliteUsageStore(UsageStore):
                 (usage_date, resource_id, warning_key),
             ).fetchone()
         return row is not None
+
+    def get_browse_visits(self, usage_date: str) -> List[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM browse_visits WHERE usage_date = ? ORDER BY id",
+                (usage_date,),
+            ).fetchall()
+        return [_row_visit(row) for row in rows]
+
+    def seed_browse_visits(self, usage_date: str, visits) -> None:
+        if self.get_browse_visits(usage_date):
+            return
+        with self._connect() as conn:
+            for visit in visits or []:
+                url = str((visit or {}).get("url") or "").strip()
+                host = str((visit or {}).get("host") or "").strip()
+                if not url or not host:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO browse_visits (
+                        usage_date, host, url, title, first_seen, last_seen, usage_seconds, browser
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        usage_date,
+                        host,
+                        url,
+                        str((visit or {}).get("title") or ""),
+                        str((visit or {}).get("first_seen") or ""),
+                        str((visit or {}).get("last_seen") or ""),
+                        max(0, int((visit or {}).get("usage_seconds") or 0)),
+                        str((visit or {}).get("browser") or ""),
+                    ),
+                )
+            conn.commit()
+
+    def add_browse_visit(
+        self,
+        usage_date: str,
+        host: str,
+        url: str,
+        title: str,
+        seconds: int,
+        seen_at: str,
+        browser: str = "",
+        max_rows: int = MAX_BROWSE_VISITS,
+    ) -> str:
+        host = str(host or "").strip()
+        url = str(url or "").strip()
+        if not host or not url:
+            return "skipped"
+        title = str(title or "")
+        browser = str(browser or "").strip()
+        seconds = max(0, int(seconds or 0))
+        with self._connect() as conn:
+            last = conn.execute(
+                "SELECT * FROM browse_visits WHERE usage_date = ? ORDER BY id DESC LIMIT 1",
+                (usage_date,),
+            ).fetchone()
+            if last and last["url"] == url:
+                conn.execute(
+                    """
+                    UPDATE browse_visits
+                    SET last_seen = ?,
+                        usage_seconds = usage_seconds + ?,
+                        title = CASE WHEN ? != '' THEN ? ELSE title END,
+                        host = CASE WHEN ? != '' THEN ? ELSE host END,
+                        browser = CASE WHEN ? != '' THEN ? ELSE browser END
+                    WHERE id = ?
+                    """,
+                    (seen_at, seconds, title, title, host, host, browser, browser, last["id"]),
+                )
+                conn.commit()
+                return "updated"
+            count = conn.execute(
+                "SELECT COUNT(*) FROM browse_visits WHERE usage_date = ?",
+                (usage_date,),
+            ).fetchone()[0]
+            if int(count) >= int(max_rows):
+                return "full"
+            conn.execute(
+                """
+                INSERT INTO browse_visits (
+                    usage_date, host, url, title, first_seen, last_seen, usage_seconds, browser
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (usage_date, host, url, title, seen_at, seen_at, seconds, browser),
+            )
+            conn.commit()
+        return "inserted"
+
+    def get_watches(self, usage_date: str, resource_id: str) -> List[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM watch_history
+                WHERE usage_date = ? AND resource_id = ?
+                ORDER BY id
+                """,
+                (usage_date, resource_id),
+            ).fetchall()
+        return [_row_watch(row) for row in rows]
+
+    def seed_watches(self, usage_date: str, resource_id: str, videos) -> None:
+        if self.get_watches(usage_date, resource_id):
+            return
+        with self._connect() as conn:
+            for video in videos or []:
+                video_id = str((video or {}).get("id") or "").strip()
+                if not video_id:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO watch_history (
+                        usage_date, resource_id, video_id, title, channel, url,
+                        first_seen, last_seen, usage_seconds
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        usage_date,
+                        resource_id,
+                        video_id,
+                        str((video or {}).get("title") or ""),
+                        str((video or {}).get("channel") or ""),
+                        str((video or {}).get("url") or ""),
+                        str((video or {}).get("first_seen") or ""),
+                        str((video or {}).get("last_seen") or ""),
+                        max(0, int((video or {}).get("usage_seconds") or 0)),
+                    ),
+                )
+            conn.commit()
+
+    def add_watch(
+        self,
+        usage_date: str,
+        resource_id: str,
+        video: dict,
+        seconds: int,
+        seen_at: str,
+        max_rows: int = MAX_WATCHES,
+    ) -> str:
+        if not isinstance(video, dict):
+            return "skipped"
+        video_id = str(video.get("id") or "").strip()
+        if not video_id:
+            return "skipped"
+        title = str(video.get("title") or "")
+        channel = str(video.get("channel") or "")
+        url = str(video.get("url") or "")
+        seconds = max(0, int(seconds or 0))
+        with self._connect() as conn:
+            last = conn.execute(
+                """
+                SELECT * FROM watch_history
+                WHERE usage_date = ? AND resource_id = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (usage_date, resource_id),
+            ).fetchone()
+            if last and last["video_id"] == video_id:
+                conn.execute(
+                    """
+                    UPDATE watch_history
+                    SET last_seen = ?,
+                        usage_seconds = usage_seconds + ?,
+                        title = CASE WHEN ? != '' THEN ? ELSE title END,
+                        channel = CASE WHEN ? != '' THEN ? ELSE channel END,
+                        url = CASE WHEN ? != '' THEN ? ELSE url END
+                    WHERE id = ?
+                    """,
+                    (seen_at, seconds, title, title, channel, channel, url, url, last["id"]),
+                )
+                conn.commit()
+                return "updated"
+            count = conn.execute(
+                "SELECT COUNT(*) FROM watch_history WHERE usage_date = ? AND resource_id = ?",
+                (usage_date, resource_id),
+            ).fetchone()[0]
+            if int(count) >= int(max_rows):
+                return "full"
+            conn.execute(
+                """
+                INSERT INTO watch_history (
+                    usage_date, resource_id, video_id, title, channel, url,
+                    first_seen, last_seen, usage_seconds
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (usage_date, resource_id, video_id, title, channel, url, seen_at, seen_at, seconds),
+            )
+            conn.commit()
+        return "inserted"

@@ -13,8 +13,9 @@ class UsageStore(ABC):
 
     Daily totals are keyed by local date string (`YYYY-MM-DD`). Window totals
     are keyed by the `allowed_windows[].id` from rules.json for that same date.
-    Open sessions have `ended_at IS NULL`. `record_warning` is idempotent per
-    (day, resource, key).
+    Browse visits are the frontmost-browser tab log (including YouTube URLs).
+    Watch rows are YouTube/Shorts videos. Open sessions have `ended_at IS NULL`.
+    `record_warning` is idempotent per (day, resource, key).
     """
 
     @abstractmethod
@@ -72,3 +73,51 @@ class UsageStore(ABC):
     @abstractmethod
     def has_warning(self, usage_date: str, resource_id: str, warning_key: str) -> bool:
         pass
+
+    @abstractmethod
+    def add_browse_visit(
+        self,
+        usage_date: str,
+        host: str,
+        url: str,
+        title: str,
+        seconds: int,
+        seen_at: str,
+        browser: str = "",
+        max_rows: int = 5000,
+    ) -> str:
+        """Insert or extend today's last visit when the URL matches.
+
+        Returns `inserted`, `updated`, `full`, or `skipped`.
+        """
+
+    @abstractmethod
+    def get_browse_visits(self, usage_date: str) -> List[dict]:
+        """Front-tab visits for that date, in the order they were recorded."""
+
+    @abstractmethod
+    def seed_browse_visits(self, usage_date: str, visits) -> None:
+        """Copy legacy JSON visits into SQLite when that date has no rows yet."""
+
+    @abstractmethod
+    def add_watch(
+        self,
+        usage_date: str,
+        resource_id: str,
+        video: dict,
+        seconds: int,
+        seen_at: str,
+        max_rows: int = 5000,
+    ) -> str:
+        """Insert or extend today's last watch when the video id matches.
+
+        Returns `inserted`, `updated`, `full`, or `skipped`.
+        """
+
+    @abstractmethod
+    def get_watches(self, usage_date: str, resource_id: str) -> List[dict]:
+        """YouTube/Shorts watch rows for that resource and date, in recorded order."""
+
+    @abstractmethod
+    def seed_watches(self, usage_date: str, resource_id: str, videos) -> None:
+        """Copy legacy JSON videos into SQLite when that resource/date has no rows yet."""

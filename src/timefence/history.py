@@ -1,7 +1,8 @@
 """Prose summary of today's YouTube watches and Chrome visits.
 
-Reads JSON usage + browse state. App screen-time sessions are not included
-here; those show on the status page remaining-time cards.
+Reads usage + browse state (SQLite via `load_state` / `load_browse_state`).
+App screen-time sessions are not included here; those show on the status
+page remaining-time cards.
 """
 
 from datetime import datetime
