@@ -1,3 +1,11 @@
+"""Map an observed activity onto a TimeFence resource.
+
+Bundle ID is the only identifier for apps. URL contains/excludes are for a
+future browser-extension feed (`Activity.kind == website`). First enabled
+match in `rules.json` insertion order wins, so two resources must not claim
+the same bundle ID.
+"""
+
 from ..models.activity import KIND_APP, KIND_WEBSITE, Activity
 
 
@@ -15,6 +23,7 @@ def _enabled_resources(resources):
 
 
 def bundle_ids_for(resource):
+    """Configured bundle IDs, de-duplicated, original spelling preserved."""
     values = (resource or {}).get("bundle_ids")
     if not isinstance(values, list):
         return []
@@ -45,7 +54,12 @@ def find_resource_by_bundle_id(resources, bundle_id):
 
 
 def find_resource_by_url(resources, url):
-    """Match a website resource by url_contains / url_excludes. Used when a browser extension reports a URL."""
+    """Match a website resource by url_contains / url_excludes.
+
+    The activity monitor does not call this today (no Chrome URL scraping here).
+    UsageTracker uses it when Observation.activity.kind is website, e.g. a
+    future extension posting the active tab.
+    """
     text = str(url or "")
     if not text:
         return None
@@ -66,6 +80,7 @@ def find_resource_by_url(resources, url):
 
 
 def find_resource_for_activity(resources, activity):
+    """Dispatch on Activity.kind. Unknown kinds count as unmatched (no usage)."""
     if activity is None:
         return None
     if not isinstance(activity, Activity):
@@ -78,6 +93,12 @@ def find_resource_for_activity(resources, activity):
 
 
 def uses_app_capture(resource):
+    """True if the controller should use the screen-time (bundle ID) path.
+
+    Resources with `bundle_ids` or `type: app` skip the old per-resource
+    inspect/add-interval loop so Roblox is not double-counted. Website
+    resources stay on the YouTube adapter.
+    """
     if not isinstance(resource, dict):
         return False
     if bundle_ids_for(resource):

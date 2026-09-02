@@ -1,3 +1,12 @@
+"""Print one live snapshot as JSON.
+
+Run from the project tree:
+
+    PYTHONPATH=src python -m timefence.activity
+
+Use this to confirm a Mac app's bundle ID before adding it to rules.json.
+"""
+
 from datetime import datetime
 import json
 

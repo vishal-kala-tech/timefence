@@ -57,7 +57,12 @@ class TickResult:
 
 
 class UsageTracker:
-    """Turns activity observations into daily usage and sessions. Does not enforce policy."""
+    """Turns activity observations into daily usage and sessions. Does not enforce policy.
+
+    The monitor reports facts (who is in front, idle seconds). This class owns
+    the accounting rules: elapsed time, max gap, idle, one resource at a time,
+    and day split at midnight.
+    """
 
     def __init__(self, store: UsageStore):
         self.store = store
@@ -83,6 +88,18 @@ class UsageTracker:
         self.close_orphaned_sessions(now)
 
     def apply(self, observation: Observation, resources, settings: ScreenTimeSettings) -> TickResult:
+        """Turn one monitor snapshot into session/usage updates.
+
+        Rules of thumb:
+        - Elapsed time is (now - previous poll), never the configured interval.
+        - Gaps larger than max_countable_interval_seconds are sleep/stall:
+          end the session, do not credit the gap.
+        - Idle/lock: do not credit this interval; end the session.
+        - Credit the resource that was in front *during* the interval (the
+          previous session), then switch session to whoever is in front now.
+          A Roblox → Chrome poll therefore adds those seconds to Roblox.
+        - First poll after start only opens a session (elapsed is 0).
+        """
         now = observation.timestamp
         idle = observation.idle_seconds >= float(settings.idle_threshold_seconds)
         locked = bool(observation.screen_locked)
@@ -97,6 +114,7 @@ class UsageTracker:
                 interrupted = True
         self._last_poll = now
 
+        # Idle/lock: do not resolve a resource, so nothing can start a session.
         activity = None if (idle or locked) else observation.resolved_activity()
         match = find_resource_for_activity(resources, activity) if activity else None
         current_id = match[0] if match else None
@@ -118,6 +136,7 @@ class UsageTracker:
         self._was_idle = idle or locked
 
         if interrupted:
+            # Sleep, debugger pause, or a stalled poll: drop the gap entirely.
             result.session_ended = self._end_session(now, reason="interrupted")
             if current_id:
                 result.session_started = self._start_session(current_id, now, activity)
@@ -134,6 +153,9 @@ class UsageTracker:
             added, total = self._credit(previous_id, counted, previous_poll, now)
             result.increment_seconds = added
             result.total_seconds = total
+            # Keep resource_id as the app that consumed this interval so the
+            # controller dual-writes JSON usage to the right resource even if
+            # we switch away on this same poll.
             result.resource_id = previous_id
             if added:
                 _log(

@@ -1,3 +1,27 @@
+"""macOS frontmost-app capture.
+
+This module answers three questions for one poll:
+
+1. Which GUI app is in front? (bundle ID is the identifier we match on)
+2. How long since the last keyboard/mouse event?
+3. Does the session look locked? (loginwindow / screensaver)
+
+It does **not** decide which TimeFence resource that is, or whether seconds
+should be counted. `UsageTracker.apply()` does that from the Observation.
+
+Why two backends for each call
+------------------------------
+NSWorkspace / AppKit is the preferred API (`NSWorkspace.shared.frontmostApplication`)
+but requires PyObjC (`pip install timefence[macos]`). LaunchAgents and test
+environments often do not have it, and importing AppKit can hang in restricted
+sessions. AppleScript via System Events is the fallback. Lookups are tried in
+order; the first success wins. Subprocess calls use a 5s timeout so a stuck
+osascript cannot stall the whole controller loop.
+
+Tests inject `frontmost_fn` / `idle_fn` / `locked_fn` on MacOSActivityMonitor
+instead of hitting the real system.
+"""
+
 import logging
 import subprocess
 from datetime import datetime
@@ -5,6 +29,11 @@ from datetime import datetime
 from ..models.activity import FrontmostApp, Observation
 from .idle_detector import idle_seconds, is_screen_locked
 
+# When the lock screen or screensaver is up, that process is frontmost. Treating
+# those bundle IDs as locked ends the current session immediately instead of
+# waiting for the HID idle threshold. Sleep itself is handled separately: the
+# controller stops polling, then UsageTracker drops the gap if it exceeds
+# max_countable_interval_seconds.
 LOCK_BUNDLE_IDS = {
     "com.apple.loginwindow",
     "com.apple.screensaver.engine",
@@ -12,11 +41,14 @@ LOCK_BUNDLE_IDS = {
 
 
 def _looks_locked(frontmost):
+    """True when the frontmost process is the lock screen or screensaver."""
     if frontmost is None or not frontmost.bundle_id:
         return False
     return frontmost.bundle_id.lower() in LOCK_BUNDLE_IDS
 
 
+# Tab-separated: name, bundle id, unix pid. Bundle id is in a nested try
+# because some System Events processes have no identifier.
 FRONTMOST_SCRIPT = """
 tell application "System Events"
     try
@@ -36,7 +68,11 @@ end tell
 
 
 def frontmost_application():
-    """Return the macOS frontmost app (name, bundle ID, pid). Bundle ID is the canonical identifier."""
+    """Return the macOS frontmost app (name, bundle ID, pid).
+
+    Bundle ID is the canonical identifier for matching `resources.*.bundle_ids`.
+    Do not key usage off process name; names collide and change across locales.
+    """
     for reader in (_frontmost_via_nsworkspace, _frontmost_via_applescript):
         try:
             app = reader()
@@ -49,6 +85,8 @@ def frontmost_application():
 
 
 def _frontmost_via_nsworkspace():
+    # Imported here so missing PyObjC is an ImportError we skip, not a module
+    # load failure for the whole package.
     from AppKit import NSWorkspace
 
     app = NSWorkspace.sharedWorkspace().frontmostApplication()
@@ -87,7 +125,11 @@ def _frontmost_via_applescript():
 
 
 def running_bundle_ids():
-    """Return {bundle_id.lower(): pid} for running GUI apps."""
+    """Return {bundle_id.lower(): pid} for running GUI apps.
+
+    Used by the generic app adapter to see if a configured app is running even
+    when it is not frontmost (so we can still enforce a block).
+    """
     for reader in (_running_via_nsworkspace, _running_via_applescript):
         try:
             found = reader()
@@ -151,7 +193,11 @@ def _running_via_applescript():
 
 
 def terminate_bundle_ids(bundle_ids):
-    """Quit running apps whose bundle IDs match. Prefers NSRunningApplication, then AppleScript quit."""
+    """Quit running apps whose bundle IDs match.
+
+    Prefer NSRunningApplication.terminate() (graceful, then force). AppleScript
+    `tell application id … to quit` is the fallback when PyObjC is absent.
+    """
     wanted = {str(item).strip().lower() for item in bundle_ids if str(item).strip()}
     if not wanted:
         return
@@ -187,7 +233,14 @@ def _terminate_via_nsworkspace(wanted):
 
 
 class MacOSActivityMonitor:
-    """Polls frontmost app, HID idle time, and lock state. Does not decide usage."""
+    """One poll of (time, idle, lock, frontmost app).
+
+    Capture is a snapshot only. Elapsed seconds, session start/end, and
+    resource matching live in UsageTracker so this class stays easy to mock.
+
+    Constructor hooks (`frontmost_fn`, `idle_fn`, `locked_fn`) are for tests.
+    Production uses the module-level macOS helpers.
+    """
 
     def __init__(self, frontmost_fn=None, idle_fn=None, locked_fn=None):
         self._frontmost_fn = frontmost_fn or frontmost_application
@@ -195,6 +248,13 @@ class MacOSActivityMonitor:
         self._locked_fn = locked_fn or is_screen_locked
 
     def capture(self, now=None):
+        """Return an Observation for `now` (controller-injected clock in tests).
+
+        Failures are swallowed so a broken idle or lock check cannot stop
+        frontmost detection. Idle defaults to 0 (treat as active) if unknown —
+        under-counting from a wedged HID API would hide real use. Frontmost
+        failure is logged at exception level because then we cannot match apps.
+        """
         now = now or datetime.now()
         try:
             idle = float(self._idle_fn() or 0.0)
@@ -211,6 +271,8 @@ class MacOSActivityMonitor:
         except Exception:
             logging.exception("Frontmost application lookup failed")
             frontmost = None
+        # loginwindow in front means the user is at the lock screen even if
+        # HID idle is still below the threshold (they just pressed Ctrl-Cmd-Q).
         locked = locked or _looks_locked(frontmost)
         return Observation(
             timestamp=now,

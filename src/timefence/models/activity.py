@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+# Activity.kind values. The monitor currently emits APP only. WEBSITE is for a
+# future extension posting a URL into UsageTracker; MEDIA is reserved.
 KIND_APP = "app"
 KIND_WEBSITE = "website"
 KIND_MEDIA = "media"
@@ -9,6 +11,8 @@ KIND_MEDIA = "media"
 
 @dataclass(frozen=True)
 class FrontmostApp:
+    """GUI app currently in front. bundle_id is what we match in rules.json."""
+
     app_name: str
     bundle_id: str
     pid: int
@@ -42,6 +46,13 @@ class Activity:
 
 @dataclass(frozen=True)
 class Observation:
+    """One monitor snapshot. UsageTracker reads this; it does not mutate it.
+
+    Set `activity` directly to inject a website/media event without a frontmost
+    app (tests and a future browser extension). Otherwise `resolved_activity()`
+    builds an APP Activity from `frontmost.bundle_id`.
+    """
+
     timestamp: datetime
     idle_seconds: float
     screen_locked: bool = False
