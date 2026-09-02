@@ -35,7 +35,7 @@ def skip_block_countdown(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def skip_browse_inspect(monkeypatch):
-    monkeypatch.setattr(controller.browse, "inspect", lambda: None)
+    monkeypatch.setattr(controller.browse, "inspect", lambda *args, **kwargs: None)
 
 
 @pytest.fixture(autouse=True)
@@ -703,7 +703,7 @@ def test_browse_log_records_front_tab(app_dir, monkeypatch):
     monkeypatch.setattr(
         controller.browse,
         "inspect",
-        lambda: {
+        lambda *args, **kwargs: {
             "host": "www.example.com",
             "url": "https://www.example.com/page",
             "title": "Example",
@@ -747,16 +747,16 @@ def test_screen_time_counts_elapsed_for_bundle_app(app_dir, monkeypatch):
         return times[min(idx["n"], len(times) - 1)]
 
     monkeypatch.setattr(controller, "_now", now)
-    monkeypatch.setattr(
-        controller.MacOSActivityMonitor,
-        "capture",
-        lambda self, now=None: Observation(
-            timestamp=now,
-            idle_seconds=0,
-            screen_locked=False,
-            frontmost=FrontmostApp("Roblox", "com.roblox.RobloxPlayer", 99),
-        ),
-    )
+    class FakeMonitor:
+        def capture(self, now=None):
+            return Observation(
+                timestamp=now,
+                idle_seconds=0,
+                screen_locked=False,
+                frontmost=FrontmostApp("Roblox", "com.roblox.RobloxPlayer", 99),
+            )
+
+    monkeypatch.setattr(controller, "create_activity_monitor", lambda: FakeMonitor())
     modules = install_modules(monkeypatch, roblox=True)
     modules["roblox"].inspect = MagicMock(return_value={"foreground": True})
     write_rules(

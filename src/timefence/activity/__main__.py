@@ -11,7 +11,7 @@ from datetime import datetime
 import json
 
 from .idle_detector import idle_seconds, is_screen_locked
-from .macos_activity_monitor import frontmost_application
+from ..platform.macos import frontmost_application
 
 
 def main():

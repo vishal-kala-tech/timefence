@@ -1,12 +1,11 @@
-"""YouTube (and other `url_contains` websites) via the Chrome front tab.
+"""Website resource adapter (YouTube watch vs Shorts, or any url_contains site).
 
-This is not screen-time app capture. Chrome-as-app and YouTube-as-website are
-separate budgets. Only the *frontmost* Chrome window's *active* tab counts;
-background tabs and other browsers do not.
+Tab inspect/close is delegated to `timefence.browsers`. This module owns
+YouTube URL parsing, oEmbed metadata, and the inspect payload the controller
+expects (`url`, `playback`, `video`).
 
-Inspect uses AppleScript + a small JS snippet for paused vs playing. Metadata
-comes from YouTube oEmbed (cached) so we do not scrape the page. Enforce
-closes matching tabs, not the whole Chrome process.
+Chrome-as-app and YouTube-as-website stay separate budgets. Set
+`browsers: ["chrome", "safari"]` on a website resource to cover both.
 """
 
 import json
@@ -18,25 +17,22 @@ from urllib.error import URLError
 from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import Request, urlopen
 
-DEFAULT_URL_CONTAINS = ("youtube.com/", "youtu.be/")
+from ..browsers import close_matching_tabs, read_matching_tab, url_matches as _url_matches
+from ..browsers.macos.applescript import PLAYBACK_JS, applescript_string
+from ..browsers.macos.chrome import close_script as chrome_close_script
+from ..browsers.macos.chrome import inspect_script as chrome_inspect_script
+from ..browsers.matching import DEFAULT_URL_CONTAINS
+
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,20}$")
 TITLE_SUFFIX = " - YouTube"
 OEMBED_URL = "https://www.youtube.com/oembed?format=json&url="
 METADATA_CACHE_SIZE = 20
 _metadata_cache = OrderedDict()
-# Injected into the active Chrome tab. Paused/unstarted must not consume budget.
-PLAYBACK_JS = (
-    "(function(){"
-    "var p=document.querySelector('.html5-video-player');"
-    "if(p){"
-    "if(p.classList.contains('paused-mode')||p.classList.contains('unstarted-mode'))return 'paused';"
-    "if(p.classList.contains('playing-mode'))return 'playing';"
-    "}"
-    "var v=document.querySelector('video.html5-main-video')||document.querySelector('video');"
-    "if(!v)return 'unknown';"
-    "return v.paused?'paused':'playing';"
-    "})()"
-)
+
+# Re-exports so existing tests and scripts keep importing from this module.
+inspect_script = chrome_inspect_script
+close_script = chrome_close_script
+_applescript_string = applescript_string
 
 
 def _patterns(resource, key, default):
@@ -47,32 +43,7 @@ def _patterns(resource, key, default):
 
 
 def url_matches(url, resource):
-    if not url:
-        return False
-    contains = _patterns(resource, "url_contains", DEFAULT_URL_CONTAINS)
-    excludes = _patterns(resource, "url_excludes", ())
-    if not any(token in url for token in contains):
-        return False
-    return not any(token in url for token in excludes)
-
-
-def _applescript_string(value):
-    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
-def _or_contains(variable, patterns):
-    if not patterns:
-        return "false"
-    return " or ".join(f"{variable} contains {_applescript_string(token)}" for token in patterns)
-
-
-def _url_match_script(resource, variable="currentURL"):
-    contains = _patterns(resource, "url_contains", DEFAULT_URL_CONTAINS)
-    excludes = _patterns(resource, "url_excludes", ())
-    script = f"set urlMatched to {_or_contains(variable, contains)}\n"
-    if excludes:
-        script += f"if {_or_contains(variable, excludes)} then set urlMatched to false\n"
-    return script
+    return _url_matches(url, resource, default_contains=DEFAULT_URL_CONTAINS)
 
 
 def clean_title(title):
@@ -202,61 +173,8 @@ def parse_playback(value):
     return "playing"
 
 
-def inspect_script(resource):
-    """AppleScript: only when Chrome is frontmost, return URL/title/playback of the active tab."""
-    match = _url_match_script(resource)
-    js = _applescript_string(PLAYBACK_JS)
-    return f'''
-tell application "System Events"
-    set chromeFrontmost to false
-    if exists process "Google Chrome" then
-        set chromeFrontmost to frontmost of process "Google Chrome"
-    end if
-end tell
-
-if chromeFrontmost then
-    tell application "Google Chrome"
-        if (count of windows) > 0 then
-            set currentURL to URL of active tab of front window
-            {match}
-            if urlMatched then
-                set currentTitle to title of active tab of front window
-                set playback to "unknown"
-                try
-                    set playback to execute front window's active tab javascript {js}
-                end try
-                return currentURL & linefeed & currentTitle & linefeed & playback
-            end if
-        end if
-    end tell
-end if
-
-return ""
-'''
-
-
 def active_script(resource):
     return inspect_script(resource)
-
-
-def close_script(resource):
-    """Close every Chrome tab whose URL matches; leave other tabs and Chrome running."""
-    match = _url_match_script(resource)
-    return f'''
-tell application "Google Chrome"
-    repeat with currentWindow in windows
-        set tabsToClose to {{}}
-        repeat with currentTab in tabs of currentWindow
-            set currentURL to URL of currentTab
-            {match}
-            if urlMatched then set end of tabsToClose to currentTab
-        end repeat
-        repeat with currentTab in tabsToClose
-            close currentTab
-        end repeat
-    end repeat
-end tell
-'''
 
 
 ACTIVE_SCRIPT = inspect_script({})
@@ -264,20 +182,15 @@ CLOSE_SCRIPT = close_script({})
 
 
 def inspect(resource):
-    result = subprocess.run(
-        ["osascript", "-e", inspect_script(resource or {})],
-        capture_output=True,
-        text=True,
-    )
-    raw = (result.stdout or "").strip()
-    if not raw:
+    """Front tab of the first configured browser that is frontmost and matches the URL."""
+    tab = read_matching_tab(resource, run=subprocess.run)
+    if tab is None:
         return None
-    lines = raw.splitlines()
-    url = lines[0].strip() if lines else ""
+    url = tab.url
     if url in ("", "missing value", "NO", "YES") or not url_matches(url, resource):
         return None
-    title = clean_title(lines[1] if len(lines) > 1 else "")
-    playback = parse_playback(lines[2] if len(lines) > 2 else "")
+    title = clean_title(tab.title)
+    playback = parse_playback(tab.playback)
     video = _apply_metadata(parse_video(url, title), resource)
     return {
         "url": url,
@@ -285,6 +198,7 @@ def inspect(resource):
         "channel": (video or {}).get("channel") or "",
         "playback": playback,
         "video": video,
+        "browser": tab.browser,
     }
 
 
@@ -293,8 +207,4 @@ def is_active(resource):
 
 
 def enforce(resource):
-    subprocess.run(
-        ["osascript", "-e", close_script(resource or {})],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    close_matching_tabs(resource, run=subprocess.run)

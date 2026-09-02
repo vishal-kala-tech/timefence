@@ -17,7 +17,9 @@ def test_load_config_accepts_shipped_rules():
     shipped = Path(__file__).resolve().parents[1] / "config" / "rules.json"
     cfg = load_config(shipped)
     assert cfg["version"] == 1
-    assert set(cfg["resources"]) >= {"roblox", "cursor", "visual_studio", "chrome", "pycharm", "youtube", "youtube_shorts"}
+    assert set(cfg["resources"]) >= {"roblox", "cursor", "visual_studio", "chrome", "safari", "pycharm", "youtube", "youtube_shorts"}
+    assert cfg["resources"]["youtube"]["browsers"] == ["chrome", "safari"]
+    assert "com.apple.Safari" in cfg["resources"]["safari"]["bundle_ids"]
     assert "youtube.com/watch" in cfg["resources"]["youtube"]["url_contains"]
     assert cfg["resources"]["youtube_shorts"]["url_contains"] == ["youtube.com/shorts"]
     assert cfg.get("log_browsing") is True

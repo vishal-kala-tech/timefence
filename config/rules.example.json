@@ -146,6 +146,20 @@
         }
       }
     },
+    "safari": {
+      "enabled": true,
+      "display_name": "Safari",
+      "type": "app",
+      "process_pattern": "Safari",
+      "bundle_ids": [
+        "com.apple.Safari"
+      ],
+      "policy": {
+        "default": {
+          "daily_limit_minutes": 0
+        }
+      }
+    },
     "pycharm": {
       "enabled": true,
       "display_name": "PyCharm",
@@ -166,7 +180,7 @@
       "display_name": "YouTube",
       "type": "website",
       "module": "youtube",
-      "browser": "chrome",
+      "browsers": ["chrome", "safari"],
       "url_contains": ["youtube.com/watch", "youtu.be/"],
       "url_excludes": ["youtube.com/shorts"],
       "policy": {
@@ -232,7 +246,7 @@
       "display_name": "YouTube Shorts",
       "type": "website",
       "module": "youtube",
-      "browser": "chrome",
+      "browsers": ["chrome", "safari"],
       "url_contains": ["youtube.com/shorts"],
       "policy": {
         "default": {

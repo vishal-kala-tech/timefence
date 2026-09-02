@@ -115,12 +115,16 @@ def validate_resource(name, resource):
     if resource_type is not None and (not isinstance(resource_type, str) or not resource_type.strip()):
         raise ValueError(f"Resource {name!r} type must be a non-empty string")
 
-    for field in ("url_contains", "url_excludes", "bundle_ids"):
+    for field in ("url_contains", "url_excludes", "bundle_ids", "executables"):
         values = resource.get(field)
         if values is None:
             continue
         if not isinstance(values, list) or not all(isinstance(item, str) and item for item in values):
             raise ValueError(f"Resource {name!r} {field} must be an array of non-empty strings")
+
+    _validate_app_ids(resource.get("app_ids"), f"Resource {name!r} app_ids")
+    _validate_browser_field(resource.get("browser"), f"Resource {name!r} browser")
+    _validate_browser_field(resource.get("browsers"), f"Resource {name!r} browsers")
 
     policy = resource.get("policy")
     if not isinstance(policy, dict):
@@ -186,11 +190,47 @@ def validate_config(cfg):
             raise ValueError("status_port must be an integer from 1 to 65535")
 
     _validate_screen_time(cfg.get("screen_time"))
+    _validate_browser_field(cfg.get("browser"), "browser")
+    _validate_browser_field(cfg.get("browsers"), "browsers")
 
     for name, resource in resources.items():
         validate_resource(name, resource)
 
     return cfg
+
+
+def _validate_browser_field(value, field):
+    if value is None:
+        return
+    from .browsers.matching import KNOWN_BROWSERS, normalize_browser_names
+
+    if isinstance(value, str):
+        names = normalize_browser_names(value)
+        if not names:
+            raise ValueError(f"{field} must be a non-empty browser name")
+    elif isinstance(value, list):
+        if not all(isinstance(item, str) and item.strip() for item in value):
+            raise ValueError(f"{field} must be an array of non-empty strings")
+        names = normalize_browser_names(value)
+        if not names:
+            raise ValueError(f"{field} must be an array of non-empty strings")
+    else:
+        raise ValueError(f"{field} must be a browser name or an array of names")
+    unknown = [name for name in names if name not in KNOWN_BROWSERS]
+    if unknown:
+        raise ValueError(f"{field} has unknown browser {unknown[0]!r}")
+
+
+def _validate_app_ids(value, field):
+    if value is None:
+        return
+    if not isinstance(value, dict):
+        raise ValueError(f"{field} must be an object of OS name → app ids")
+    for os_name, ids in value.items():
+        if not isinstance(os_name, str) or not os_name.strip():
+            raise ValueError(f"{field} keys must be OS names")
+        if not isinstance(ids, list) or not all(isinstance(item, str) and item for item in ids):
+            raise ValueError(f"{field}.{os_name} must be an array of non-empty strings")
 
 
 def _validate_screen_time(screen_time):

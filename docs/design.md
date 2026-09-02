@@ -15,8 +15,12 @@ Operator setup and day-to-day use live in [README.md](../README.md). This file i
 
 ## Non-goals (current)
 
-- Windows / Linux.
-- Inferring the active website from Chrome or Safari. Website activity today comes from AppleScript on the Chrome front tab. A future browser extension can feed the same usage tracker.
+- A full Windows or Linux agent. Platform and browser *adapters* exist so those
+  OSes can be added without rewriting the controller. Until an adapter is
+  implemented, app screen-time on that OS does not accumulate.
+- A browser extension. Website activity today comes from OS-specific tab
+  adapters (macOS AppleScript for Chrome and Safari). A future extension can
+  still post `Activity(kind=website)` into `UsageTracker`.
 - Network-level blocking, MDM, or Screen Time API integration.
 - Overwriting a parent-edited live `rules.json` on reinstall.
 
@@ -42,12 +46,13 @@ launchd (com.user.timefence)
 ## Responsibilities
 
 ```text
-ActivityMonitor     detect frontmost app, HID idle, lock
+ActivityMonitor     detect frontmost app, HID idle, lock   (platform/<os>/)
 UsageTracker        sessions, elapsed time, daily totals
 UsageStore          persist usage (SQLite today)
 JSON usage files    policy/status/grants still read these
 RuleEngine/policy   allow / warn / block
 EnforcementService  quit app or close matching tabs
+BrowserAdapter      front-tab URL + close matching tabs    (browsers/<os>/)
 Resource adapters   inspect + enforce for a type (app, website)
 ```
 
@@ -58,7 +63,7 @@ The controller is the only loop. It reloads `rules.json` every cycle, records ac
 Each cycle:
 
 1. Load and validate `config/rules.json`. On invalid JSON, keep the last valid config.
-2. Optionally log the Chrome front tab (`log_browsing`).
+2. Optionally log the frontmost browser tab (`log_browsing`).
 3. If screen-time capture is enabled and any resource is an app (`type: "app"` or `bundle_ids`):
    - Snapshot frontmost app + idle + lock.
    - Match bundle ID to a resource.
@@ -88,10 +93,10 @@ Two configured apps never accumulate at once. If Roblox is running in the backgr
 
 ### Identification
 
-Bundle ID is canonical. Process name is fallback for `pgrep` / `pkill` only.
+On macOS, bundle ID is canonical (`bundle_ids`). On Windows/Linux, put identifiers in `app_ids.win32` / `app_ids.linux` (or `executables`). `FrontmostApp.bundle_id` holds whatever string the OS monitor reports.
 
 ```text
-frontmost bundle_id  →  find_resource_by_bundle_id(resources)
+frontmost app id  →  find_resource_by_app_id(resources)
 ```
 
 Unknown bundle IDs produce a frontmost log with `resource=none` and do not start a session.
@@ -104,11 +109,12 @@ Shipped app IDs:
 | cursor | `com.todesktop.230313mzl4w4u92` |
 | visual_studio | `com.microsoft.VSCode`, `com.microsoft.VSCodeInsiders`, `com.microsoft.visual-studio` |
 | chrome | `com.google.Chrome`, `com.google.Chrome.beta`, `com.google.Chrome.canary` |
+| safari | `com.apple.Safari` |
 | pycharm | `com.jetbrains.pycharm`, `com.jetbrains.pycharm.ce` |
 
 Add an app by copying one of these resources: `type: "app"` plus `bundle_ids`. No code change.
 
-Cursor / VS / Chrome / PyCharm ship with `daily_limit_minutes: 0` (track, do not block). Roblox keeps standing windows and a daily cap.
+Cursor / VS / Chrome / Safari / PyCharm ship with `daily_limit_minutes: 0` (track, do not block). Roblox keeps standing windows and a daily cap.
 
 ### macOS APIs
 
@@ -141,14 +147,29 @@ Activity.identifier = bundle ID | URL | (later) media id
 
 ## Website path (YouTube)
 
-Unchanged from the original controller design:
+Browser adapters read the **frontmost** browser's active tab. Shipped YouTube
+resources use `browsers: ["chrome", "safari"]` on macOS.
 
-- AppleScript reads the Chrome **front** window’s active tab.
 - `url_contains` / `url_excludes` select watch vs Shorts.
 - Paused player (`playback: paused`) does not add usage; time-of-day blocks still apply.
-- Enforcement closes matching tabs only.
+- Enforcement closes matching tabs in **each** configured browser, not the whole browser process.
 
-Chrome-as-app and YouTube-as-website are different resources. Foreground Chrome can increment `chrome` while a YouTube tab can also increment `youtube`. That is intentional: one is “time in Chrome”, the other is “time on YouTube”.
+Chrome-as-app, Safari-as-app, and YouTube-as-website are different resources.
+
+Add another browser by implementing `BrowserAdapter` under `browsers/<os>/` and
+registering it. Set `browsers` on the website resource (or top-level config).
+
+## Platforms
+
+`create_activity_monitor()` selects the OS implementation:
+
+| OS | Package | Status |
+|---|---|---|
+| macOS (`darwin`) | `platform/macos/` | Implemented (NSWorkspace + AppleScript, HID idle) |
+| Windows (`win32`) | `platform/windows/` | Stub — empty snapshots until Win32 foreground/idle is added |
+| Linux | `platform/linux/` | Stub — empty snapshots until focused-window/idle is added |
+
+App matching uses `app_ids.<os>` when present, otherwise macOS `bundle_ids` or `executables`.
 
 ## Policy
 
@@ -173,8 +194,8 @@ Same-day bonus grants (`grants.json`) extend limits and can open a bonus window.
 
 Adapters own the mechanism:
 
-- Generic app / Roblox: quit by bundle ID, else `pkill` `process_pattern`
-- YouTube: close matching Chrome tabs
+- Generic app: quit by app id (bundle ID on macOS), else `pkill` `process_pattern`
+- YouTube: close matching tabs in configured browsers (Chrome, Safari, …)
 
 The controller shows a 6-second countdown, then calls `EnforcementService`. Notification failure never skips the block.
 
@@ -196,7 +217,7 @@ warning_state (usage_date, resource_id, warning_key)   -- e.g. limit_reached onc
 
 Existing per-resource day files: `total_usage_seconds`, per-window counters, `warnings_sent`, YouTube `videos`. Status page, budget, grants, and website tracking still use these. Screen-time ticks dual-write here so those surfaces stay consistent.
 
-`state/YYYY-MM-DD.txt` is a pipe-separated Excel export. `state/browse/` is the unrestricted Chrome tab log (not a budget).
+`state/YYYY-MM-DD.txt` is a pipe-separated Excel export. `state/browse/` is the unrestricted frontmost-browser tab log (not a budget).
 
 Query helpers on `UsageTracker`: `get_today_usage`, `get_all_today_usage`, `get_remaining_seconds`, `get_current_activity`, `get_current_session`.
 
@@ -221,19 +242,28 @@ Frontmost is not logged every poll. Usage is logged when seconds are added.
 ```text
 src/timefence/
   controller.py              loop, wiring
-  config.py                  validate rules.json
-  policy.py                  windows, limits, warnings
-  usage.py                   JSON day state
-  activity/                  frontmost, idle, bundle matching
+  platform/                  OS activity + process control
+    macos/ windows/ linux/
+  browsers/                  tab inspect/close per browser per OS
+    macos/chrome.py safari.py
+  activity/                  matching + shims
   tracking/                  UsageStore, SQLite, UsageTracker
-  models/                    Activity, FrontmostApp, usage DTOs
+  resources/youtube.py       website payload (YouTube metadata)
   resources/app.py           generic app inspect/enforce
-  resources/roblox.py        Roblox pgrep/pkill (legacy + enforce)
-  resources/youtube.py       Chrome tab inspect/close
-  rules/rule_engine.py       thin policy facade
-  enforcement/               adapter.enforce()
-  grants.py, budget.py, status_page.py, parent_*
 ```
+
+## Adding a browser (Safari, Edge, Firefox, …)
+
+1. Implement `BrowserAdapter` in `src/timefence/browsers/<os>/<name>.py`.
+2. Register it in that OS package (`MACOS_ADAPTERS`, or the Windows/Linux factory).
+3. Add the name to `KNOWN_BROWSERS` if it is new.
+4. Set `"browsers": ["chrome", "safari"]` (or `edge`, `firefox`) on the website resource.
+
+## Adding Windows or Linux app capture
+
+1. Implement `ActivityMonitor` + `ProcessController` in `platform/windows/` or `platform/linux/`.
+2. Put app identifiers in `app_ids.win32` or `app_ids.linux` (keep `bundle_ids` for macOS).
+3. `create_activity_monitor()` already dispatches on `sys.platform`.
 
 ## Adding a Mac app
 

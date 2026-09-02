@@ -4,7 +4,7 @@ Each cycle:
 
 1. Load `config/rules.json`. Invalid JSON keeps the last valid config so a
    parent typo cannot stop the agent.
-2. Optionally log the Chrome front tab (`log_browsing`). That is history, not
+2. Optionally log the frontmost browser tab (`log_browsing`). That is history, not
    a budget.
 3. Screen-time tick: snapshot frontmost app, credit elapsed seconds in SQLite,
    dual-write the same seconds into the JSON usage files that status/grants
@@ -27,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import browse
-from .activity import MacOSActivityMonitor, find_resource_by_bundle_id, uses_app_capture
+from .activity import create_activity_monitor, find_resource_by_bundle_id, uses_app_capture
 from .config import load_config, screen_time_settings
 from .enforcement import EnforcementService
 from .grants import (
@@ -53,7 +53,7 @@ from .tracking import SqliteUsageStore, UsageTracker
 from .usage import add_usage, load_state, mark_warning_sent, note_video
 
 # Name/type → inspect/enforce adapter. Screen-time matching does not use this;
-# it keys off `bundle_ids`. `website` shares the YouTube Chrome-tab adapter.
+# it keys off `bundle_ids` / `app_ids`. `website` uses the browser-tab adapter.
 MODULES = {
     "roblox": roblox,
     "youtube": youtube,
@@ -211,8 +211,8 @@ def _block_countdown_message(label, reason):
     return f"{label} has no time remaining today."
 
 
-def _log_browse(state_dir, interval, now):
-    page = browse.inspect()
+def _log_browse(state_dir, interval, now, cfg=None):
+    page = browse.inspect(cfg=cfg)
     if not page:
         return
     browse.note_visit(state_dir, page, interval, now=now)
@@ -453,7 +453,7 @@ def run(app_dir: Path):
     last_cfg = None
     store = SqliteUsageStore(state_dir / "screen_time.sqlite")
     tracker = UsageTracker(store)
-    monitor = MacOSActivityMonitor()
+    monitor = create_activity_monitor()
     enforcement = EnforcementService(_module_for)
     # Sessions left open after a crash/kill must not pick up the downtime as usage.
     tracker.close_orphaned_sessions()
@@ -510,7 +510,7 @@ def _run_loop(app_dir, cfg_path, state_dir, last_revision, last_cfg, monitor=Non
             now = _now()
             if cfg.get("log_browsing", True):
                 try:
-                    _log_browse(state_dir, interval, now)
+                    _log_browse(state_dir, interval, now, cfg=cfg)
                 except Exception:
                     logging.exception("Browse log failed")
             if tracker is not None and monitor is not None:

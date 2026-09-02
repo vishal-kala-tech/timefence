@@ -1,11 +1,8 @@
-"""Chrome front-tab history. Not a budget and not website matching.
+"""Front-tab history for whichever configured browser is in front. Not a budget.
 
-`log_browsing` records whoever is on the active tab while Chrome is
-frontmost. YouTube usage still goes through `resources/youtube.py`. Local
-hosts (status page, parent setup) are dropped from top-sites ranking.
-
-Consecutive polls of the same URL stay one visit row, same pattern as
-YouTube watch history.
+`log_browsing` records the active tab while Chrome or Safari (or another
+adapter) is frontmost. YouTube usage still goes through `resources/youtube.py`.
+Local hosts (status page, parent setup) are dropped from top-sites ranking.
 """
 
 import json
@@ -15,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
 from .usage import _cell, _day, _timestamp
+from .browsers.macos.chrome import browse_script as chrome_browse_script
 
 MAX_VISITS = 5000
 TOP_SITES = 10
@@ -28,26 +26,7 @@ BROWSE_TABLE_FIELDS = (
     "last_seen",
     "seconds",
 )
-INSPECT_SCRIPT = '''
-tell application "System Events"
-    set chromeFrontmost to false
-    if exists process "Google Chrome" then
-        set chromeFrontmost to frontmost of process "Google Chrome"
-    end if
-end tell
-
-if chromeFrontmost then
-    tell application "Google Chrome"
-        if (count of windows) > 0 then
-            set currentURL to URL of active tab of front window
-            set currentTitle to title of active tab of front window
-            return currentURL & linefeed & currentTitle
-        end if
-    end tell
-end if
-
-return ""
-'''
+INSPECT_SCRIPT = chrome_browse_script()
 
 
 def _clean_title(title):
@@ -77,20 +56,14 @@ def parse_page(url, title=""):
     }
 
 
-def inspect():
-    """Active Chrome tab only if Chrome is frontmost. None otherwise."""
-    result = subprocess.run(
-        ["osascript", "-e", INSPECT_SCRIPT],
-        capture_output=True,
-        text=True,
-    )
-    raw = (result.stdout or "").strip()
-    if not raw:
+def inspect(cfg=None):
+    """Active tab of the first configured browser that is frontmost. None otherwise."""
+    from .browsers import read_frontmost_tab
+
+    tab = read_frontmost_tab(cfg=cfg, run=subprocess.run)
+    if tab is None:
         return None
-    lines = raw.splitlines()
-    url = lines[0].strip() if lines else ""
-    title = lines[1] if len(lines) > 1 else ""
-    return parse_page(url, title)
+    return parse_page(tab.url, tab.title)
 
 
 def browse_path(state_dir, now=None):
@@ -155,7 +128,7 @@ def _is_local_host(host):
 
 
 def top_sites(state_dir, now=None, limit=TOP_SITES):
-    """Hosts ranked by time on the active Chrome tab today."""
+    """Hosts ranked by time on the frontmost browser tab today."""
     limit = max(0, int(limit))
     buckets = {}
     for visit in load_browse_state(state_dir, now=now).get("visits") or []:

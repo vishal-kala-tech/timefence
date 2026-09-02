@@ -1,21 +1,18 @@
-"""Generic Mac app: inspect/enforce by bundle ID, optional `process_pattern` kill.
+"""Generic app: inspect/enforce by OS app id (`bundle_ids` on macOS).
 
 Used when the resource `type` is `app` (Cursor, Chrome, VS Code, …). Counting
 is done by the screen-time monitor; this module only answers "is it running /
 frontmost?" and quits it.
 
-`process_pattern` is a pgrep/pkill fallback for apps without a stable bundle
-ID. Prefer `bundle_ids`. Do not key usage off process name.
+Process lookup/quit goes through `platform.process_controller()` so Windows
+and Linux can replace pgrep/pkill later. `process_pattern` remains a Unix
+fallback.
 """
 
 import subprocess
 
-from ..activity.macos_activity_monitor import (
-    frontmost_application,
-    running_bundle_ids,
-    terminate_bundle_ids,
-)
-from ..activity.matching import bundle_ids_for
+from ..activity.matching import app_ids_for
+from ..platform import frontmost_application, running_app_ids, terminate_app_ids
 
 
 def _process_pattern(resource):
@@ -23,7 +20,7 @@ def _process_pattern(resource):
 
 
 def _bundle_ids(resource):
-    return bundle_ids_for(resource)
+    return app_ids_for(resource)
 
 
 def _process_running(resource):
@@ -41,7 +38,7 @@ def _bundle_running(resource):
     wanted = {item.lower() for item in _bundle_ids(resource)}
     if not wanted:
         return False
-    running = running_bundle_ids()
+    running = running_app_ids()
     return any(bundle_id in running for bundle_id in wanted)
 
 
@@ -76,7 +73,7 @@ def enforce(resource):
     """Quit matching bundle IDs first, then pkill the optional process pattern."""
     ids = _bundle_ids(resource)
     if ids:
-        terminate_bundle_ids(ids)
+        terminate_app_ids(ids)
     pattern = _process_pattern(resource)
     if pattern:
         subprocess.run(
