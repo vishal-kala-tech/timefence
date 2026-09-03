@@ -1,12 +1,12 @@
-"""Load and validate `config/rules.json`. Shared by the agent and parent editor.
+"""Load and validate standing rules.
 
-Reject the whole file on any schema error so a bad parent save cannot run.
-`save_config` writes to a temp file then replaces, so a crash mid-write does
-not leave truncated JSON.
+JSON `config/rules.json` is the seed. After the first successful load in an
+app directory, SQLite (`state/screen_time.sqlite`) is canonical. Parent
+Limits and Resources saves write the database.
 
 `allowed_windows` is optional on a day policy:
-- key absent → schedule unrestricted (track / daily cap only)
-- `[]` → never allowed except a bonus grant
+- key absent means schedule unrestricted (track / daily cap only)
+- `[]` means never allowed except a bonus grant
 """
 
 import json
@@ -293,18 +293,55 @@ def screen_time_settings(cfg):
     )
 
 
+def sqlite_path_for_rules(rules_path):
+    """Live app layout is `app/config/rules.json` plus `app/state/`.
+
+    The git checkout also has `config/` and sometimes `state/`; skip those so
+    shipped `rules.json` stays a seed file.
+    """
+    rules_path = Path(rules_path)
+    if rules_path.parent.name != "config":
+        return None
+    app_dir = rules_path.parent.parent
+    if (app_dir / ".git").exists():
+        return None
+    state = app_dir / "state"
+    if not state.is_dir():
+        return None
+    return state / "screen_time.sqlite"
+
+
 def load_config(path: Path) -> dict:
+    path = Path(path)
+    db_path = sqlite_path_for_rules(path)
+    if db_path is not None:
+        from .rules_store import has_rules, load_rules, save_rules
+        from .tracking.sqlite_usage_store import SqliteUsageStore
+
+        SqliteUsageStore(db_path)
+        if has_rules(db_path):
+            return validate_config(load_rules(db_path))
     with path.open() as f:
         cfg = json.load(f)
-    return validate_config(cfg)
+    cfg = validate_config(cfg)
+    if db_path is not None:
+        from .rules_store import save_rules
+
+        save_rules(db_path, cfg)
+    return cfg
 
 
 def save_config(path: Path, cfg: dict) -> dict:
-    """Validate, then atomically replace the live rules file."""
+    """Validate, write SQLite when this is an app install, and keep JSON as a seed copy."""
     cfg = validate_config(cfg)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
     tmp.replace(path)
+    db_path = sqlite_path_for_rules(path)
+    if db_path is not None:
+        from .rules_store import save_rules
+
+        save_rules(db_path, cfg)
     return cfg

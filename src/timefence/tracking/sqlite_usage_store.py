@@ -1,10 +1,14 @@
 """SQLite implementation of UsageStore (`state/screen_time.sqlite`).
 
-Canonical store for resources, daily totals, per-window totals, sessions,
-browser visits, and video watches. Every usage row is keyed by
+Canonical store for observed resources, daily totals, per-window totals,
+sessions, browser visits, and video watches. Every usage row is keyed by
 (resource_type, resource_id). App totals are screen time; website and
 video_category totals attribute the same foreground interval and must not be
 added together.
+
+Standing rule configuration lives in the separate `rule_*` tables in this
+same file. Observed activity writes usage tables only; it does not create
+`rule_resources` rows.
 """
 
 import json
@@ -139,10 +143,168 @@ ON watch_history (
     resource_id,
     id
 );
+
+CREATE TABLE IF NOT EXISTS rule_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    version INTEGER NOT NULL,
+    revision INTEGER NOT NULL,
+    check_interval_seconds INTEGER NOT NULL,
+    log_browsing INTEGER NOT NULL DEFAULT 0 CHECK (log_browsing IN (0, 1))
+);
+
+CREATE TABLE IF NOT EXISTS rule_screen_time_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    poll_interval_seconds INTEGER NOT NULL,
+    idle_threshold_seconds INTEGER NOT NULL,
+    max_countable_interval_seconds INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rule_resources (
+    resource_id TEXT PRIMARY KEY,
+    resource_type TEXT NOT NULL CHECK (resource_type IN ('app', 'website', 'video_category')),
+    display_name TEXT NOT NULL,
+    module TEXT,
+    process_pattern TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))
+);
+
+CREATE TABLE IF NOT EXISTS rule_resource_match_ids (
+    resource_id TEXT NOT NULL,
+    match_id TEXT NOT NULL,
+    PRIMARY KEY (resource_id, match_id),
+    FOREIGN KEY (resource_id) REFERENCES rule_resources(resource_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS rule_resource_browsers (
+    resource_id TEXT NOT NULL,
+    browser TEXT NOT NULL,
+    PRIMARY KEY (resource_id, browser),
+    FOREIGN KEY (resource_id) REFERENCES rule_resources(resource_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS rule_url_filters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    resource_id TEXT NOT NULL,
+    filter_type TEXT NOT NULL CHECK (filter_type IN ('include', 'exclude')),
+    pattern TEXT NOT NULL,
+    UNIQUE (resource_id, filter_type, pattern),
+    FOREIGN KEY (resource_id) REFERENCES rule_resources(resource_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS rule_policies (
+    policy_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    resource_id TEXT NOT NULL,
+    policy_type TEXT NOT NULL CHECK (policy_type IN ('default', 'day', 'date')),
+    day_of_week INTEGER,
+    policy_date TEXT,
+    daily_limit_minutes INTEGER NOT NULL DEFAULT 0,
+    has_windows INTEGER NOT NULL DEFAULT 0 CHECK (has_windows IN (0, 1)),
+    FOREIGN KEY (resource_id) REFERENCES rule_resources(resource_id) ON DELETE CASCADE,
+    CHECK (day_of_week IS NULL OR (day_of_week BETWEEN 0 AND 6)),
+    CHECK (
+        (policy_type = 'default' AND day_of_week IS NULL AND policy_date IS NULL)
+        OR (policy_type = 'day' AND day_of_week IS NOT NULL AND policy_date IS NULL)
+        OR (policy_type = 'date' AND policy_date IS NOT NULL AND day_of_week IS NULL)
+    ),
+    CHECK (
+        policy_date IS NULL
+        OR (
+            length(policy_date) = 10
+            AND policy_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+        )
+    )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS rule_policies_default_uidx
+ON rule_policies (resource_id) WHERE policy_type = 'default';
+
+CREATE UNIQUE INDEX IF NOT EXISTS rule_policies_day_uidx
+ON rule_policies (resource_id, day_of_week) WHERE policy_type = 'day';
+
+CREATE UNIQUE INDEX IF NOT EXISTS rule_policies_date_uidx
+ON rule_policies (resource_id, policy_date) WHERE policy_type = 'date';
+
+CREATE INDEX IF NOT EXISTS rule_policies_resource_idx
+ON rule_policies (resource_id);
+
+CREATE TABLE IF NOT EXISTS rule_policy_warnings (
+    policy_id INTEGER NOT NULL,
+    warning_minutes INTEGER NOT NULL,
+    PRIMARY KEY (policy_id, warning_minutes),
+    FOREIGN KEY (policy_id) REFERENCES rule_policies(policy_id) ON DELETE CASCADE,
+    CHECK (warning_minutes > 0)
+);
+
+CREATE TABLE IF NOT EXISTS rule_windows (
+    window_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    policy_id INTEGER NOT NULL,
+    window_key TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    limit_minutes INTEGER,
+    UNIQUE (policy_id, window_key),
+    FOREIGN KEY (policy_id) REFERENCES rule_policies(policy_id) ON DELETE CASCADE,
+    CHECK (limit_minutes IS NULL OR limit_minutes >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS rule_window_warnings (
+    window_id INTEGER NOT NULL,
+    warning_minutes INTEGER NOT NULL,
+    PRIMARY KEY (window_id, warning_minutes),
+    FOREIGN KEY (window_id) REFERENCES rule_windows(window_id) ON DELETE CASCADE,
+    CHECK (warning_minutes > 0)
+);
 """
 
 MAX_BROWSE_VISITS = 5000
 MAX_WATCHES = 5000
+
+
+def _rule_table_names(conn):
+    return [
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'rule_%'"
+        )
+    ]
+
+
+def _table_columns(conn, table):
+    return [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+
+
+def _rule_schema_is_stale(conn) -> bool:
+    names = set(_rule_table_names(conn))
+    if not names:
+        return False
+    if "rule_match_ids" in names or "rule_screen_time_settings" not in names:
+        return True
+    if "rule_resource_match_ids" not in names:
+        return True
+    policy_cols = set(_table_columns(conn, "rule_policies"))
+    if "policy_id" not in policy_cols or "policy_type" not in policy_cols:
+        return True
+    if "has_windows" not in policy_cols:
+        return True
+    resource_info = conn.execute("PRAGMA table_info(rule_resources)").fetchall()
+    pk = [row[1] for row in resource_info if row[5]]
+    if pk != ["resource_id"]:
+        return True
+    settings_cols = set(_table_columns(conn, "rule_settings"))
+    return "screen_time_json" in settings_cols or "extra_json" in settings_cols
+
+
+def _drop_rule_tables(conn):
+    conn.execute("PRAGMA foreign_keys = OFF")
+    for name in _rule_table_names(conn):
+        conn.execute(f"DROP TABLE IF EXISTS {name}")
+    for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'rule_%'"
+    ):
+        conn.execute(f"DROP INDEX IF EXISTS {row[0]}")
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.commit()
 
 
 def _row_resource(row) -> dict:
@@ -249,8 +411,13 @@ class SqliteUsageStore(UsageStore):
             ).fetchone()
             resource_cols = [row[1] for row in conn.execute("PRAGMA table_info(resources)").fetchall()]
             daily_cols = [row[1] for row in conn.execute("PRAGMA table_info(daily_usage)").fetchall()]
+            rule_stale = _rule_schema_is_stale(conn)
         if resources is None or "id" not in resource_cols or "id" not in daily_cols:
             self.path.unlink()
+            return
+        if rule_stale:
+            with self._connect() as conn:
+                _drop_rule_tables(conn)
 
     def _connect(self):
         conn = sqlite3.connect(self.path)
