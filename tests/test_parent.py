@@ -99,6 +99,10 @@ def test_parent_html_has_grant_and_rules_forms():
     assert 'id="grant-form"' in page
     assert 'id="rules-form"' in page
     assert 'id="panel-activity"' in page
+    assert 'id="panel-resources"' in page
+    assert 'id="tab-resources"' in page
+    assert 'id="resource-add-form"' in page
+    assert "/api/parent/resources" in page
     assert 'id="lock"' in page
     assert "Apps" in page
     assert "Websites" in page
@@ -187,6 +191,42 @@ def test_parent_http_pin_rules_and_grant(app_dir):
         live = load_config(app_dir / "config/rules.json")
         youtube = _by_key(live)[(RESOURCE_TYPE_VIDEO_CATEGORY, YOUTUBE_VIDEOS_RESOURCE_ID)]
         assert youtube["policy"]["default"]["daily_limit_minutes"] == 25
+
+        code, managed = _json(anon, base + "/api/parent/resources")
+        assert code == 200
+        assert managed["resources"][0]["resource_id"] == YOUTUBE_VIDEOS_RESOURCE_ID
+        assert managed["resources"][0]["listed"] is True
+
+        code, managed = _json(
+            anon,
+            base + "/api/parent/resources",
+            "POST",
+            {
+                "resource_type": RESOURCE_TYPE_APP,
+                "resource_id": "com.apple.Terminal",
+                "display_name": "Mac Terminal",
+            },
+        )
+        assert code == 200
+        terminal = next(row for row in managed["resources"] if row["resource_id"] == "com.apple.Terminal")
+        assert terminal["display_name"] == "Mac Terminal"
+        assert terminal["listed"] is True
+
+        code, managed = _json(
+            anon,
+            base + "/api/parent/resources/app/com.apple.Terminal",
+            "PUT",
+            {"display_name": "Terminal"},
+        )
+        assert code == 200
+        terminal = next(row for row in managed["resources"] if row["resource_id"] == "com.apple.Terminal")
+        assert terminal["display_name"] == "Terminal"
+
+        code, managed = _json(anon, base + "/api/parent/resources/app/com.apple.Terminal", "DELETE")
+        assert code == 200
+        assert all(row["resource_id"] != "com.apple.Terminal" or not row["listed"] for row in managed["resources"])
+        live = load_config(app_dir / "config/rules.json")
+        assert all(item["resource_id"] != "com.apple.Terminal" for item in live["resources"])
 
         other = _opener()
         code, payload = _json(other, base + "/api/pin", "POST", {"pin": "0000"})

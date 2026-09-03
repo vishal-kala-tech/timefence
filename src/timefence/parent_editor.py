@@ -1,9 +1,7 @@
 """Translate between `rules.json` and the parent-editor JSON subset.
 
 The UI only edits enabled, display name, weekday default, Saturday, and
-Sunday. It cannot add resources, change `bundle_ids`, or rewrite
-`date_overrides`. That keeps a PIN holder from inventing new apps or wiping
-screen-time identifiers.
+Sunday. Adding and removing resources happens on the Resources page.
 
 `editor_to_day` always emits at least one window (`all_day` 00:00–24:00). An
 empty `allowed_windows` list would mean "never allowed"; the form must not

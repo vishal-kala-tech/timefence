@@ -16,12 +16,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import parent_activity, parent_auth, parent_page
+from . import parent_activity, parent_auth, parent_page, parent_resources
 from .config import load_config, save_config
 from .grants import clear_grant, grant_from_config, grant_rows
 from .identity import listed_resources, resource_id_of, resource_key, resource_type_of
 from .parent_editor import apply_editor, editor_from_config
+from .parent_resources import DuplicateResource, UnknownResource
 from .status_page import DEFAULT_STATUS_PORT, render, write_html
+from .tracking.sqlite_usage_store import SqliteUsageStore
 
 _lock = threading.Lock()
 _server = None
@@ -102,6 +104,18 @@ class _Handler(BaseHTTPRequestHandler):
             "unlocked": self._unlocked(),
         }
 
+    def _state_store(self, app_dir):
+        return SqliteUsageStore(Path(app_dir) / "state" / "screen_time.sqlite")
+
+    def _resources_payload(self, app_dir, cfg=None):
+        cfg = cfg if cfg is not None else _load_rules(app_dir)
+        return parent_resources.list_managed_resources(cfg, self._state_store(app_dir))
+
+    def _split_resource_path(self, path, prefix):
+        rest = unquote(path[len(prefix) :]).strip()
+        resource_type, _, resource_id = rest.partition("/")
+        return resource_type.strip(), resource_id.strip()
+
     def _grant_payload(self, cfg):
         resources = []
         for resource in listed_resources(cfg):
@@ -160,6 +174,62 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 date = (parse_qs(urlparse(self.path).query).get("date") or [None])[0]
                 self._send_json(200, parent_activity.day_report(app_dir, date=date))
+                return
+            if method == "GET" and path == "/api/parent/resources":
+                if not self._require_parent():
+                    return
+                self._send_json(200, self._resources_payload(app_dir))
+                return
+            if method == "POST" and path == "/api/parent/resources":
+                if not self._require_parent():
+                    return
+                cfg, resource = parent_resources.create_resource(_load_rules(app_dir), self._read_json())
+                save_config(_rules_path(app_dir), cfg)
+                parent_resources.sync_store(
+                    self._state_store(app_dir),
+                    resource["resource_type"],
+                    resource["resource_id"],
+                    resource.get("display_name") or "",
+                )
+                logging.info(
+                    "Parent added resource %s/%s",
+                    resource["resource_type"],
+                    resource["resource_id"],
+                )
+                self._send_json(200, self._resources_payload(app_dir, cfg))
+                return
+            if method in ("PUT", "DELETE") and path.startswith("/api/parent/resources/"):
+                if not self._require_parent():
+                    return
+                resource_type, resource_id = self._split_resource_path(path, "/api/parent/resources/")
+                if not resource_type or not resource_id:
+                    self._send_json(400, {"error": "Missing resource"})
+                    return
+                cfg = _load_rules(app_dir)
+                store = self._state_store(app_dir)
+                if method == "DELETE":
+                    cfg = parent_resources.delete_resource(cfg, resource_type, resource_id)
+                    save_config(_rules_path(app_dir), cfg)
+                    logging.info("Parent removed resource %s/%s", resource_type, resource_id)
+                    self._send_json(200, self._resources_payload(app_dir, cfg))
+                    return
+                body = self._read_json()
+                try:
+                    cfg, resource = parent_resources.update_resource(cfg, resource_type, resource_id, body)
+                    save_config(_rules_path(app_dir), cfg)
+                    parent_resources.sync_store(
+                        store,
+                        resource["resource_type"],
+                        resource["resource_id"],
+                        resource.get("display_name") or "",
+                    )
+                    logging.info("Parent updated resource %s/%s", resource_type, resource_id)
+                except UnknownResource:
+                    if "enabled" in body or "match_ids" in body:
+                        raise
+                    parent_resources.rename_observed(store, resource_type, resource_id, body.get("display_name"))
+                    logging.info("Parent renamed observed %s/%s", resource_type, resource_id)
+                self._send_json(200, self._resources_payload(app_dir, cfg))
                 return
             if method == "GET" and path == "/api/rules":
                 if not self._require_parent():
@@ -239,6 +309,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(404, "Not found.", "text/plain; charset=utf-8")
         except FileNotFoundError:
             self._send_json(503, {"error": "TimeFence rules are not installed yet."})
+        except UnknownResource as exc:
+            self._send_json(404, {"error": str(exc)})
+        except DuplicateResource as exc:
+            self._send_json(409, {"error": str(exc)})
         except ValueError as exc:
             code = 403 if str(exc) == "Wrong PIN" else 400
             self._send_json(code, {"error": str(exc)})

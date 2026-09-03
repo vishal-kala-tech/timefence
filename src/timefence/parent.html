@@ -388,6 +388,100 @@
       font-size: 15px;
       font-weight: 400;
     }
+    .catalog-group { margin-bottom: 18px; }
+    .catalog-group h3 { margin-bottom: 8px; }
+    .catalog-row {
+      display: grid;
+      grid-template-columns: minmax(180px, 0.9fr) minmax(0, 1.2fr) auto;
+      grid-template-rows: auto 44px auto;
+      column-gap: 16px;
+      row-gap: 6px;
+      align-items: center;
+      padding: 14px 0;
+    }
+    .catalog-row.has-match {
+      grid-template-columns: minmax(180px, 0.85fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+    }
+    .catalog-row + .catalog-row { border-top: 1px solid var(--tf-divider); }
+    .catalog-row .resource-heading {
+      grid-column: 1;
+      grid-row: 2;
+      min-width: 0;
+    }
+    .catalog-fields { display: contents; }
+    .catalog-field { display: contents; }
+    .catalog-field .field-label,
+    .catalog-field input,
+    .catalog-field .field-hint { min-width: 0; }
+    .catalog-field .field-label { grid-row: 1; }
+    .catalog-field input {
+      grid-row: 2;
+      height: 44px;
+      padding: 0 14px;
+    }
+    .catalog-field .field-hint {
+      grid-row: 3;
+      min-height: 18px;
+    }
+    .catalog-name .field-label,
+    .catalog-name input,
+    .catalog-name .field-hint { grid-column: 2; }
+    .catalog-row.has-match .catalog-match .field-label,
+    .catalog-row.has-match .catalog-match input,
+    .catalog-row.has-match .catalog-match .field-hint { grid-column: 3; }
+    .catalog-id {
+      margin: 4px 0 0;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--tf-text-muted);
+      word-break: break-all;
+    }
+    .catalog-actions {
+      grid-column: 3;
+      grid-row: 2;
+      display: flex;
+      gap: 8px;
+      flex-wrap: nowrap;
+      align-items: center;
+      justify-content: flex-end;
+      height: 44px;
+    }
+    .catalog-row.has-match .catalog-actions { grid-column: 4; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: var(--tf-surface-subtle);
+      color: var(--tf-text-muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .chip-seen { background: #f4eee4; color: #8a6a2a; }
+    @media (max-width: 820px) {
+      .catalog-row,
+      .catalog-row.has-match {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: none;
+        align-items: stretch;
+      }
+      .catalog-row .resource-heading,
+      .catalog-row .catalog-actions,
+      .catalog-name .field-label,
+      .catalog-name input,
+      .catalog-name .field-hint,
+      .catalog-row.has-match .catalog-match .field-label,
+      .catalog-row.has-match .catalog-match input,
+      .catalog-row.has-match .catalog-match .field-hint {
+        grid-column: 1;
+        grid-row: auto;
+      }
+      .catalog-fields,
+      .catalog-field { display: flex; flex-direction: column; gap: 6px; }
+      .catalog-field { margin-top: 8px; }
+      .catalog-actions { height: auto; justify-content: flex-start; margin-top: 8px; }
+    }
     .empty-card { text-align: center; padding: 48px 28px; }
     .empty-title {
       margin: 0 0 8px;
@@ -770,6 +864,7 @@
         <nav class="app-nav" id="page-tabs" aria-label="Parent pages">
           <button type="button" id="tab-overview" aria-selected="false">Overview</button>
           <button type="button" id="tab-activity" aria-selected="true">Activity</button>
+          <button type="button" id="tab-resources" aria-selected="false">Resources</button>
           <button type="button" id="tab-setup" aria-selected="false">Limits</button>
           <button type="button" id="tab-requests" aria-selected="false">Requests</button>
         </nav>
@@ -852,6 +947,46 @@
           <p class="summary-copy" id="activity-narrative"></p>
         </article>
         <p class="hint" id="activity-hint"></p>
+      </div>
+
+      <div id="panel-resources" class="hidden">
+        <div class="page-intro">
+          <h2 class="page-title">Resources</h2>
+          <p class="page-lede">Add apps, websites, and videos to track. Display names show on the kid page and Activity.</p>
+        </div>
+        <article class="card">
+          <div class="card-head"><h2>Add a resource</h2></div>
+          <form id="resource-add-form">
+            <div class="row">
+              <label class="field">
+                <span class="field-label">Type</span>
+                <select id="resource-add-type">
+                  <option value="app">App</option>
+                  <option value="website">Website</option>
+                  <option value="video_category:youtube_videos">YouTube Videos</option>
+                  <option value="video_category:youtube_shorts">YouTube Shorts</option>
+                </select>
+              </label>
+              <label class="field grow" id="resource-add-id-wrap">
+                <span class="field-label" id="resource-add-id-label">Bundle ID</span>
+                <input id="resource-add-id" type="text" placeholder="com.apple.Terminal" autocomplete="off" spellcheck="false">
+              </label>
+              <label class="field grow">
+                <span class="field-label">Display name</span>
+                <input id="resource-add-name" type="text" placeholder="Terminal" autocomplete="off">
+              </label>
+            </div>
+            <label class="field" id="resource-add-match-wrap">
+              <span class="field-label">Also match these IDs</span>
+              <input id="resource-add-match" type="text" placeholder="Optional extra bundle IDs, comma-separated" autocomplete="off" spellcheck="false">
+              <span class="field-hint">Use this when one app has more than one bundle ID.</span>
+            </label>
+            <p class="actions" style="margin-top:16px">
+              <button type="submit">Add resource</button>
+            </p>
+          </form>
+        </article>
+        <div id="resource-groups"></div>
       </div>
 
       <div id="panel-setup" class="hidden">
@@ -938,11 +1073,22 @@
     const logBrowsing = document.getElementById("log-browsing");
     const tabOverview = document.getElementById("tab-overview");
     const tabActivity = document.getElementById("tab-activity");
+    const tabResources = document.getElementById("tab-resources");
     const tabSetup = document.getElementById("tab-setup");
     const tabRequests = document.getElementById("tab-requests");
     const panelActivity = document.getElementById("panel-activity");
+    const panelResources = document.getElementById("panel-resources");
     const panelSetup = document.getElementById("panel-setup");
     const panelRequests = document.getElementById("panel-requests");
+    const resourceGroups = document.getElementById("resource-groups");
+    const resourceAddForm = document.getElementById("resource-add-form");
+    const resourceAddType = document.getElementById("resource-add-type");
+    const resourceAddId = document.getElementById("resource-add-id");
+    const resourceAddIdWrap = document.getElementById("resource-add-id-wrap");
+    const resourceAddIdLabel = document.getElementById("resource-add-id-label");
+    const resourceAddName = document.getElementById("resource-add-name");
+    const resourceAddMatch = document.getElementById("resource-add-match");
+    const resourceAddMatchWrap = document.getElementById("resource-add-match-wrap");
     const dayLabel = document.getElementById("day-label");
     const dayPicker = document.getElementById("day-picker");
     const dayPrev = document.getElementById("day-prev");
@@ -1066,6 +1212,12 @@
         if (hour >= 0 && hour <= 23) return String(hour).padStart(2, "0") + ":" + minutes;
       }
       return fallback || raw;
+    }
+
+    function catalogField(kind, label, control, hint) {
+      const wrap = field(label, control, hint || "\u00a0");
+      wrap.classList.add("catalog-field", kind);
+      return wrap;
     }
 
     function field(label, control, hint) {
@@ -1444,11 +1596,187 @@
       const onActivity = name === "activity" || name === "overview";
       tabOverview.setAttribute("aria-selected", name === "overview" ? "true" : "false");
       tabActivity.setAttribute("aria-selected", name === "activity" ? "true" : "false");
+      tabResources.setAttribute("aria-selected", name === "resources" ? "true" : "false");
       tabSetup.setAttribute("aria-selected", name === "setup" ? "true" : "false");
       tabRequests.setAttribute("aria-selected", name === "requests" ? "true" : "false");
       show(panelActivity, onActivity);
+      show(panelResources, name === "resources");
       show(panelSetup, name === "setup");
       show(panelRequests, name === "requests");
+    }
+
+    function resourcePath(row) {
+      return "/api/parent/resources/" + encodeURIComponent(row.resource_type) + "/" + encodeURIComponent(row.resource_id);
+    }
+
+    function parseAddType() {
+      const value = resourceAddType.value || "app";
+      const parts = value.split(":");
+      return { resource_type: parts[0], resource_id: parts[1] || "" };
+    }
+
+    function syncAddForm() {
+      const parsed = parseAddType();
+      const isApp = parsed.resource_type === "app";
+      const isSite = parsed.resource_type === "website";
+      show(resourceAddIdWrap, !parsed.resource_id);
+      show(resourceAddMatchWrap, isApp);
+      resourceAddId.required = !parsed.resource_id;
+      if (isApp) {
+        resourceAddIdLabel.textContent = "Bundle ID";
+        resourceAddId.placeholder = "com.apple.Terminal";
+        resourceAddName.placeholder = "Terminal";
+      } else if (isSite) {
+        resourceAddIdLabel.textContent = "Domain";
+        resourceAddId.placeholder = "github.com";
+        resourceAddName.placeholder = "GitHub";
+      } else {
+        resourceAddName.placeholder = parsed.resource_id === "youtube_shorts" ? "YouTube Shorts" : "YouTube Videos";
+      }
+    }
+
+    async function refreshManaged(payload) {
+      if (!payload) payload = await api("/api/parent/resources");
+      renderManagedResources(payload);
+      const [rules, grants] = await Promise.all([api("/api/rules"), api("/api/grants")]);
+      renderRules(rules);
+      renderGrants(grants);
+    }
+
+    function catalogRow(row) {
+      const node = document.createElement("div");
+      node.className = "catalog-row";
+      const heading = document.createElement("div");
+      heading.className = "resource-heading";
+      heading.append(usageMark(row.display_name || row.resource_id));
+      const copy = document.createElement("div");
+      const title = document.createElement("div");
+      title.className = "usage-name";
+      title.textContent = row.display_name || row.resource_id;
+      const idLine = document.createElement("div");
+      idLine.className = "catalog-id";
+      idLine.textContent = row.resource_type + " · " + row.resource_id;
+      copy.append(title, idLine);
+      heading.append(copy);
+      const fields = document.createElement("div");
+      fields.className = "catalog-fields";
+      const name = input({ type: "text", value: row.display_name || row.resource_id, "aria-label": "Display name" });
+      fields.append(catalogField("catalog-name", "Display name", name, ""));
+      let match = null;
+      if (row.resource_type === "app" && row.listed) {
+        match = input({
+          type: "text",
+          value: (row.match_ids || []).join(", "),
+          placeholder: "Extra bundle IDs",
+          "aria-label": "Also match these IDs"
+        });
+        fields.append(catalogField("catalog-match", "Also match", match, "Optional extra bundle IDs"));
+        node.classList.add("has-match");
+      }
+      const actions = document.createElement("div");
+      actions.className = "catalog-actions";
+      if (row.listed) {
+        const enabled = switchControl("enabled", row.enabled !== false, "Enabled");
+        actions.append(enabled);
+      } else {
+        const chip = document.createElement("span");
+        chip.className = "chip chip-seen";
+        chip.textContent = "Seen, not tracked";
+        actions.append(chip);
+      }
+      const save = document.createElement("button");
+      save.type = "button";
+      save.textContent = "Save";
+      save.addEventListener("click", async () => {
+        try {
+          const body = { display_name: name.value.trim() };
+          if (row.listed) {
+            body.enabled = node.querySelector(".enabled").checked;
+            if (match) body.match_ids = match.value;
+          }
+          await refreshManaged(await api(resourcePath(row), { method: "PUT", body }));
+          flash("ok", "Saved " + (name.value.trim() || row.resource_id) + ".");
+        } catch (err) {
+          flash("err", err.message);
+        }
+      });
+      actions.append(save);
+      if (row.listed) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "secondary";
+        remove.textContent = "Remove";
+        remove.addEventListener("click", async () => {
+          if (!window.confirm("Stop tracking " + (row.display_name || row.resource_id) + "? Past activity is kept.")) return;
+          try {
+            await refreshManaged(await api(resourcePath(row), { method: "DELETE" }));
+            flash("ok", "Removed " + (row.display_name || row.resource_id) + " from tracking.");
+          } catch (err) {
+            flash("err", err.message);
+          }
+        });
+        actions.append(remove);
+      } else {
+        const track = document.createElement("button");
+        track.type = "button";
+        track.className = "secondary";
+        track.textContent = "Track";
+        track.addEventListener("click", async () => {
+          try {
+            await refreshManaged(await api("/api/parent/resources", {
+              method: "POST",
+              body: {
+                resource_type: row.resource_type,
+                resource_id: row.resource_id,
+                display_name: name.value.trim() || row.display_name
+              }
+            }));
+            flash("ok", "Now tracking " + (name.value.trim() || row.display_name || row.resource_id) + ".");
+          } catch (err) {
+            flash("err", err.message);
+          }
+        });
+        actions.append(track);
+      }
+      node.append(heading, fields, actions);
+      return node;
+    }
+
+    function renderManagedResources(payload) {
+      const groups = [
+        { key: "app", title: "Apps", listed: true },
+        { key: "website", title: "Websites", listed: true },
+        { key: "video_category", title: "Videos", listed: true },
+        { key: "app", title: "Seen apps, not tracked yet", listed: false },
+        { key: "website", title: "Seen websites, not tracked yet", listed: false },
+        { key: "video_category", title: "Seen videos, not tracked yet", listed: false }
+      ];
+      resourceGroups.replaceChildren();
+      groups.forEach((group) => {
+        const rows = (payload.resources || []).filter(
+          (row) => row.resource_type === group.key && Boolean(row.listed) === group.listed
+        );
+        if (!rows.length) return;
+        const wrap = document.createElement("article");
+        wrap.className = "card catalog-group";
+        const heading = document.createElement("h3");
+        heading.textContent = group.title;
+        wrap.append(heading);
+        rows.forEach((row) => wrap.append(catalogRow(row)));
+        resourceGroups.append(wrap);
+      });
+      if (!resourceGroups.children.length) {
+        const empty = document.createElement("article");
+        empty.className = "card empty-card";
+        const title = document.createElement("p");
+        title.className = "empty-title";
+        title.textContent = "No resources yet";
+        const note = document.createElement("p");
+        note.className = "empty-note";
+        note.textContent = "Add an app bundle ID or website domain to start tracking it.";
+        empty.append(title, note);
+        resourceGroups.append(empty);
+      }
     }
 
     function metricCard(value, title, sub, visual, alert) {
@@ -1949,9 +2277,14 @@
     }
 
     async function loadWorkspace() {
-      const [rules, grants] = await Promise.all([api("/api/rules"), api("/api/grants")]);
+      const [rules, grants, managed] = await Promise.all([
+        api("/api/rules"),
+        api("/api/grants"),
+        api("/api/parent/resources")
+      ]);
       renderRules(rules);
       renderGrants(grants);
+      renderManagedResources(managed);
     }
 
     function showGate(session) {
@@ -2001,8 +2334,37 @@
 
     tabOverview.addEventListener("click", () => setPageTab("overview"));
     tabActivity.addEventListener("click", () => setPageTab("activity"));
+    tabResources.addEventListener("click", () => setPageTab("resources"));
     tabSetup.addEventListener("click", () => setPageTab("setup"));
     tabRequests.addEventListener("click", () => setPageTab("requests"));
+    resourceAddType.addEventListener("change", syncAddForm);
+    syncAddForm();
+    resourceAddForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const parsed = parseAddType();
+      const resource_id = parsed.resource_id || resourceAddId.value.trim();
+      if (!resource_id) {
+        flash("err", "Enter a bundle ID or domain.");
+        return;
+      }
+      try {
+        await refreshManaged(await api("/api/parent/resources", {
+          method: "POST",
+          body: {
+            resource_type: parsed.resource_type,
+            resource_id,
+            display_name: resourceAddName.value.trim(),
+            match_ids: resourceAddMatch.value
+          }
+        }));
+        resourceAddId.value = "";
+        resourceAddName.value = "";
+        resourceAddMatch.value = "";
+        flash("ok", "Added. Set limits on the Limits page if you want a cap.");
+      } catch (err) {
+        flash("err", err.message);
+      }
+    });
     document.getElementById("grant-more").addEventListener("click", () => {
       setPageTab("setup");
       document.getElementById("grant-form").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2078,6 +2440,7 @@
           resources: [...resourcesEl.querySelectorAll(".resource")].map(collectResource)
         };
         renderRules(await api("/api/rules", { method: "PUT", body: editor }));
+        renderManagedResources(await api("/api/parent/resources"));
         flash("ok", "Rules saved. Changes apply after the next check.");
       } catch (err) {
         flash("err", err.message);
