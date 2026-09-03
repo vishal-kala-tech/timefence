@@ -161,6 +161,50 @@ def test_current_activity_accepts_timezone_aware_session_start(app_dir):
     assert report["current"]["seconds"] >= 900
 
 
+def test_unlisted_apps_use_friendly_names(app_dir):
+    write_rules(
+        app_dir,
+        make_config(
+            resources={
+                "visual_studio": make_resource(
+                    display_name="Visual Studio",
+                    default=make_day_policy(daily_limit_minutes=0),
+                )
+            }
+        ),
+    )
+    store = SqliteUsageStore(app_dir / "state" / "screen_time.sqlite")
+    store.add_active_seconds("2024-01-15", "com.apple.Terminal", 120, WHEN.isoformat())
+    store.add_active_seconds("2024-01-15", "visual_studio", 60, WHEN.isoformat())
+    report = day_report(app_dir, date="2024-01-15", now=WHEN)
+    labels = {row["label"]: row for row in report["apps"]}
+    assert "Terminal" in labels
+    assert "VS Code" in labels
+    assert labels["Terminal"]["has_limit"] is False
+    assert labels["VS Code"]["has_limit"] is False
+
+
+def test_limited_app_includes_remaining_compact(app_dir):
+    _seed(app_dir)
+    report = day_report(app_dir, date="2024-01-15", now=WHEN)
+    youtube = next(row for row in report["limits"] if row["id"] == "youtube")
+    assert youtube["remaining_compact"]
+    video = report["videos"][0]
+    assert video["has_limit"] is True
+    chrome = report["apps"][0]
+    assert chrome["has_limit"] is False
+
+
+def test_custom_bundle_name_is_used_on_activity(app_dir):
+    write_rules(app_dir, make_config(resources={}))
+    store = SqliteUsageStore(app_dir / "state" / "screen_time.sqlite")
+    store.add_active_seconds("2024-01-15", "com.apple.Terminal", 90, WHEN.isoformat())
+    store.start_session("com.apple.Terminal", WHEN.isoformat(), identifier="com.apple.Terminal")
+    store.set_bundle_name("com.apple.Terminal", "Mac Terminal", WHEN.isoformat())
+    report = day_report(app_dir, date="2024-01-15", now=WHEN)
+    assert report["apps"][0]["label"] == "Mac Terminal"
+
+
 def test_next_rule_uses_upcoming_window(app_dir):
     write_rules(
         app_dir,

@@ -126,12 +126,14 @@ def page_model(cfg, state_dir, now=None):
 ICON_HOSTS = (
     ("youtube shorts", "youtube.com"),
     ("youtube", "youtube.com"),
+    ("vs code", "code.visualstudio.com"),
     ("visual studio", "visualstudio.com"),
     ("chrome", "chrome.google.com"),
     ("safari", "apple.com"),
     ("roblox", "roblox.com"),
     ("cursor", "cursor.com"),
     ("pycharm", "jetbrains.com"),
+    ("terminal", "apple.com"),
     ("github", "github.com"),
 )
 
@@ -188,15 +190,12 @@ def _bar(percent, kind):
     )
 
 
-def _usage_bar(percent, kind, pill_text, relative=False):
+def _usage_bar(percent, kind, relative=False):
     pct = max(0, min(100, int(percent or 0)))
     fill = _fill_kind(pct, kind, relative=relative)
-    left = max(8, min(92, pct or 8))
-    pill = html.escape(pill_text or "")
     return (
         f'<div class="bar-track usage-track" aria-hidden="true">'
-        f'<div class="bar {html.escape(fill)}" style="width:{pct}%"></div>'
-        f'<span class="bar-pill" style="left:{left}%">{pill}</span></div>'
+        f'<div class="bar {html.escape(fill)}" style="width:{pct}%"></div></div>'
     )
 
 
@@ -265,11 +264,13 @@ def _sites_html(model):
     for item in model.get("sites") or []:
         host = html.escape(item["host"])
         used = html.escape(item["used_label"])
+        compact = html.escape(_compact_clock(item["seconds"]))
         rows.append(
             f'<li class="usage-row">'
             f'{_mark_html(item["host"])}'
-            f'<div class="usage-name" title="{host} · {used}">{host}</div>'
-            f'{_usage_bar(item["percent"], "ok", _compact_clock(item["seconds"]), relative=True)}'
+            f'<div class="usage-copy"><div class="usage-name" title="{host} · {used}">{host}</div></div>'
+            f'{_usage_bar(item["percent"], "ok", relative=True)}'
+            f'<div class="usage-duration">{compact}</div>'
             f"</li>"
         )
     body = (
@@ -314,7 +315,7 @@ def render_html(model):
       --tf-border: #E5E2DC;
       --tf-divider: #ECE9E4;
       --tf-primary: #2563EB;
-      --tf-bar: #1f2a44;
+      --tf-bar: #3F5C88;
       --tf-track: #E7E7E7;
       --tf-warning: #D99520;
       --tf-danger: #DC4C4C;
@@ -472,20 +473,6 @@ def render_html(model):
     }}
     .bar.warn {{ background: var(--tf-warning); }}
     .bar.blocked {{ background: var(--tf-danger); }}
-    .usage-track {{ position: relative; overflow: visible; }}
-    .bar-pill {{
-      position: absolute;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      background: var(--tf-bar);
-      color: #fff;
-      font-size: 0.72rem;
-      font-weight: 600;
-      border-radius: 999px;
-      padding: 3px 8px;
-      pointer-events: none;
-      white-space: nowrap;
-    }}
     .windows {{
       list-style: none;
       padding: 8px 0 0;
@@ -516,11 +503,12 @@ def render_html(model):
     }}
     .usage-row {{
       display: grid;
-      grid-template-columns: 40px minmax(72px, 28%) minmax(0, 1fr);
+      grid-template-columns: 40px minmax(96px, 1.1fr) minmax(64px, 1.35fr) 4.5rem;
       gap: 10px;
       align-items: center;
       padding: 10px 0;
     }}
+    .usage-copy {{ min-width: 0; }}
     .usage-name {{
       font-size: 15px;
       font-weight: 550;
@@ -528,6 +516,14 @@ def render_html(model):
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }}
+    .usage-duration {{
+      font-size: 13px;
+      font-weight: 550;
+      color: var(--tf-text-secondary);
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
     }}
     .empty-note {{ color: var(--tf-text-muted); margin: 0; }}
     footer {{
@@ -541,7 +537,7 @@ def render_html(model):
       .app-header {{ position: static; }}
       .lists-grid {{ grid-template-columns: 1fr; }}
       .remaining {{ font-size: 30px; }}
-      .usage-row {{ grid-template-columns: 40px minmax(64px, 34%) minmax(0, 1fr); }}
+      .usage-row {{ grid-template-columns: 40px minmax(72px, 1.1fr) minmax(48px, 1.2fr) 3.75rem; }}
     }}
   </style>
 </head>

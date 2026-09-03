@@ -205,6 +205,9 @@ def test_day_rollover_does_not_count_yesterday_toward_today(tmp_path):
     tr.apply(observation(later), cfg, SETTINGS)
     assert tr.get_today_usage("roblox", now=later).used_seconds == 15
     assert tr.store.get_daily("2026-08-29", "roblox").total_active_seconds == 10
+    today_sessions = tr.store.get_sessions_on_date("2026-08-30")
+    assert today_sessions
+    assert today_sessions[-1].identifier == ROBLOX_BUNDLE
 
 
 def test_screen_lock_ends_session_without_counting(tmp_path):
@@ -287,4 +290,6 @@ def test_unlisted_foreground_app_is_recorded_under_bundle_id(tmp_path):
     assert tr.get_today_usage(finder, now=t2).used_seconds == 20
     assert tr.get_current_activity()["resource_id"] == finder
     assert tr.get_current_activity()["identifier"] == finder
+    names = {row["bundle_id"]: row["display_name"] for row in tr.store.list_bundle_names()}
+    assert names["com.apple.finder"] == "Finder"
     assert tr.get_today_usage("roblox", now=t2).used_seconds == 0

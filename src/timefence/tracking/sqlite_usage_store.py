@@ -73,6 +73,13 @@ CREATE TABLE IF NOT EXISTS watch_history (
     usage_seconds INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS bundle_names (
+    bundle_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'auto',
+    updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS usage_sessions_open_idx
     ON usage_sessions (resource_id, ended_at);
 CREATE INDEX IF NOT EXISTS browse_visits_date_idx
@@ -535,3 +542,53 @@ class SqliteUsageStore(UsageStore):
             )
             conn.commit()
         return "inserted"
+
+    def ensure_bundle_name(self, bundle_id: str, display_name: str, updated_at: str) -> None:
+        bundle_id = str(bundle_id or "").strip()
+        display_name = str(display_name or "").strip()
+        if not bundle_id or not display_name:
+            return
+        key = bundle_id.lower()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO bundle_names (bundle_id, display_name, source, updated_at)
+                VALUES (?, ?, 'auto', ?)
+                ON CONFLICT(bundle_id) DO NOTHING
+                """,
+                (key, display_name, updated_at),
+            )
+
+    def set_bundle_name(self, bundle_id: str, display_name: str, updated_at: str) -> None:
+        bundle_id = str(bundle_id or "").strip()
+        display_name = str(display_name or "").strip()
+        if not bundle_id or not display_name:
+            raise ValueError("Bundle ID and name are required")
+        key = bundle_id.lower()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO bundle_names (bundle_id, display_name, source, updated_at)
+                VALUES (?, ?, 'user', ?)
+                ON CONFLICT(bundle_id) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    source = 'user',
+                    updated_at = excluded.updated_at
+                """,
+                (key, display_name, updated_at),
+            )
+
+    def list_bundle_names(self) -> List[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT bundle_id, display_name, source, updated_at FROM bundle_names ORDER BY display_name COLLATE NOCASE, bundle_id"
+            ).fetchall()
+        return [
+            {
+                "bundle_id": row["bundle_id"],
+                "display_name": row["display_name"],
+                "source": row["source"] or "auto",
+                "updated_at": row["updated_at"] or "",
+            }
+            for row in rows
+        ]

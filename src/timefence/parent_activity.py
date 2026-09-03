@@ -10,6 +10,7 @@ from pathlib import Path
 from .browse import display_host, load_browse_state, top_sites
 from .budget import format_clock, format_span, format_time_of_day, format_window_name
 from .budget import summarize as budget_summarize
+from .bundle_ids import humanize_bundle_id
 from .config import load_config
 from .history import VIDEO_RESOURCES, format_summary, summarize
 from .policy import parse_hhmm, resource_label
@@ -22,6 +23,9 @@ DEFAULT_LABELS = {
     "chrome": "Chrome",
     "safari": "Safari",
     "roblox": "Roblox",
+    "cursor": "Cursor",
+    "visual_studio": "VS Code",
+    "pycharm": "PyCharm",
 }
 
 
@@ -103,11 +107,26 @@ def _store(state_dir):
     return SqliteUsageStore(Path(state_dir) / "screen_time.sqlite")
 
 
-def _label_for(resource_id, cfg):
-    resource = (cfg.get("resources") or {}).get(resource_id)
-    if isinstance(resource, dict) and resource.get("display_name"):
-        return resource_label(resource_id, resource)
-    return DEFAULT_LABELS.get(resource_id) or str(resource_id).replace("_", " ").replace("-", " ").title()
+def _label_for(resource_id, cfg, names=None):
+    names = names or {}
+    resources = cfg.get("resources") or {}
+    resource = resources.get(resource_id)
+    if isinstance(resource, dict):
+        label = resource_label(resource_id, resource)
+        if str(resource_id) == "visual_studio" and label.lower() in ("visual studio", "code"):
+            return "VS Code"
+        if label and label != resource_id:
+            return label
+    needle = str(resource_id or "").strip().lower()
+    for name, item in resources.items():
+        if name == resource_id or not isinstance(item, dict):
+            continue
+        ids = [str(item_id).strip().lower() for item_id in (item.get("bundle_ids") or [])]
+        if needle in ids:
+            return _label_for(name, cfg, names=names)
+    if needle in names:
+        return names[needle]
+    return DEFAULT_LABELS.get(resource_id) or humanize_bundle_id(resource_id)
 
 
 def _format_clock_iso(value):
@@ -203,7 +222,7 @@ def _daily_seconds(state_dir, usage_date, store):
     return rows
 
 
-def _app_rows(cfg, daily, sessions_by_id, windows_by_id):
+def _app_rows(cfg, daily, sessions_by_id, windows_by_id, names=None):
     apps = []
     for resource_id, seconds in daily.items():
         if resource_id in VIDEO_RESOURCES:
@@ -224,7 +243,7 @@ def _app_rows(cfg, daily, sessions_by_id, windows_by_id):
         apps.append(
             {
                 "id": resource_id,
-                "label": _label_for(resource_id, cfg),
+                "label": _label_for(resource_id, cfg, names=names),
                 "seconds": int(seconds or 0),
                 "seconds_label": format_clock(seconds),
                 "seconds_compact": compact_clock(seconds),
@@ -265,7 +284,7 @@ def _current_activity(apps, visits, is_today, report_now):
     return None
 
 
-def _budget_rows(cfg, state_dir, report_now):
+def _budget_rows(cfg, state_dir, report_now, names=None):
     rows = []
     for row in budget_summarize(cfg, state_dir, now=report_now):
         limit = int(row.get("daily_limit") or 0)
@@ -285,7 +304,7 @@ def _budget_rows(cfg, state_dir, report_now):
         rows.append(
             {
                 "id": row["name"],
-                "label": row["label"],
+                "label": _label_for(row["name"], cfg, names=names),
                 "used_seconds": used,
                 "limit_seconds": limit,
                 "remaining_seconds": remaining,
@@ -298,6 +317,7 @@ def _budget_rows(cfg, state_dir, report_now):
                     if limit
                     else compact_clock(used)
                 ),
+                "remaining_compact": compact_clock(remaining) if remaining is not None else "",
                 "remaining_label": (
                     "No time remaining"
                     if remaining == 0
@@ -405,13 +425,17 @@ def day_report(app_dir, date=None, now=None):
     cfg_path = app_dir / "config" / "rules.json"
     cfg = load_config(cfg_path) if cfg_path.exists() else {}
     store = _store(state_dir)
+    names = {
+        str(row["bundle_id"]).lower(): row["display_name"]
+        for row in store.list_bundle_names()
+    }
 
     daily = _daily_seconds(state_dir, usage_date, store)
     sessions_by_id = {}
     for row in store.get_sessions_on_date(usage_date):
         sessions_by_id.setdefault(row.resource_id, []).append(_session_payload(row))
     windows_by_id = store.get_all_windows_for_date(usage_date)
-    apps = _app_rows(cfg, daily, sessions_by_id, windows_by_id)
+    apps = _app_rows(cfg, daily, sessions_by_id, windows_by_id, names=names)
     app_seconds = sum(item["seconds"] for item in apps)
 
     browse_state = load_browse_state(state_dir, now=day)
@@ -441,7 +465,7 @@ def day_report(app_dir, date=None, now=None):
             video_groups.append(
                 {
                     "id": name,
-                    "label": _label_for(name, cfg),
+                    "label": _label_for(name, cfg, names=names),
                     "seconds": total,
                     "seconds_label": format_clock(total),
                     "seconds_compact": compact_clock(total),
@@ -451,8 +475,25 @@ def day_report(app_dir, date=None, now=None):
 
     has_data = bool(app_seconds or site_seconds or video_count or visits or any(item["sessions"] for item in apps))
     report_now = _report_now(day, today, now)
-    budgets = _budget_rows(cfg, state_dir, report_now)
+    budgets = _budget_rows(cfg, state_dir, report_now, names=names)
     limits = _limits_payload(budgets)
+    by_id = {row["id"]: row for row in budgets}
+    for app in apps:
+        row = by_id.get(app["id"])
+        if row and row.get("limit_seconds"):
+            app["has_limit"] = True
+            app["remaining_compact"] = row.get("remaining_compact") or compact_clock(row.get("remaining_seconds") or 0)
+            app["limit_status"] = row.get("status")
+        else:
+            app["has_limit"] = False
+    for group in video_groups:
+        row = by_id.get(group["id"])
+        if row and row.get("limit_seconds"):
+            group["has_limit"] = True
+            group["remaining_compact"] = row.get("remaining_compact") or compact_clock(row.get("remaining_seconds") or 0)
+            group["limit_status"] = row.get("status")
+        else:
+            group["has_limit"] = False
     current = _current_activity(apps, visits, day == today, report_now)
     next_rule = _next_rule(budgets, report_now) if day == today else None
     daily_summary = _daily_summary(apps, hosts, video_groups, limits, day == today)

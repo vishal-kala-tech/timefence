@@ -139,7 +139,7 @@ def seed_day(store: SqliteUsageStore, day: date, rng: random.Random) -> None:
 
     # School day. Occasional light day.
     light = rng.random() < 0.1
-    closed_session(store, "cursor", at(day, 8, rng.randint(5, 25)), jitter(rng, (25 if light else 55) * 60), "cursor")
+    closed_session(store, "cursor", at(day, 8, rng.randint(5, 25)), jitter(rng, (25 if light else 55) * 60), "com.todesktop.230313mzl4w4u92")
     closed_session(store, "chrome", at(day, 10, rng.randint(0, 20)), jitter(rng, (12 if light else 28) * 60), "com.google.Chrome")
     if not light and rng.random() < 0.55:
         closed_session(store, "visual_studio", at(day, 13, rng.randint(0, 15)), jitter(rng, 22 * 60), "com.microsoft.VSCode")

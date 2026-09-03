@@ -20,7 +20,7 @@
       --tf-primary: #2563EB;
       --tf-primary-hover: #1D4ED8;
       --tf-primary-soft: #EAF2FF;
-      --tf-bar: #1f2a44;
+      --tf-bar: #3F5C88;
       --tf-track: #E7E7E7;
       --tf-warning: #D99520;
       --tf-danger: #DC4C4C;
@@ -450,7 +450,7 @@
       justify-content: space-between;
       gap: 12px;
       flex-wrap: wrap;
-      margin: 8px 0 16px;
+      margin: 8px 0 8px;
     }
     .date-stepper { display: flex; align-items: center; gap: 4px; }
     .date-stepper button {
@@ -526,18 +526,19 @@
       min-height: 108px;
     }
     .metric-copy { min-width: 0; }
+    .metric .cap {
+      margin: 0;
+      color: var(--tf-text-secondary);
+      font-weight: 500;
+      font-size: 13px;
+    }
     .metric .num {
       font-size: 36px;
       font-weight: 700;
       letter-spacing: -0.02em;
       line-height: 1.05;
       color: var(--tf-text);
-    }
-    .metric .cap {
-      margin-top: 8px;
-      color: var(--tf-text-secondary);
-      font-weight: 500;
-      font-size: 15px;
+      margin-top: 6px;
     }
     .metric .sub { color: var(--tf-text-muted); font-size: 13px; font-weight: 400; margin-top: 4px; }
     .metric .sub.alert { color: var(--tf-danger); font-weight: 500; }
@@ -602,7 +603,7 @@
     #panel-setup .resource-heading h2 { font-size: 20px; font-weight: 600; }
     .usage-row {
       display: grid;
-      grid-template-columns: 40px minmax(72px, 28%) minmax(0, 1fr);
+      grid-template-columns: 40px minmax(96px, 1.1fr) minmax(64px, 1.35fr) 4.5rem;
       gap: 10px;
       align-items: center;
       padding: 10px 0;
@@ -631,6 +632,7 @@
       object-fit: contain;
       display: block;
     }
+    .usage-copy { min-width: 0; }
     .usage-name {
       font-size: 15px;
       font-weight: 550;
@@ -638,6 +640,22 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .usage-limit {
+      margin-top: 2px;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--tf-text-muted);
+    }
+    .usage-limit.is-warning { color: var(--tf-warning); }
+    .usage-limit.is-blocked { color: var(--tf-danger); }
+    .usage-duration {
+      font-size: 13px;
+      font-weight: 550;
+      color: var(--tf-text-secondary);
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
     }
     .bar-track { height: 7px; background: var(--tf-track); border-radius: 99px; overflow: hidden; min-width: 48px; }
     .bar {
@@ -650,26 +668,8 @@
     .bar.warn, .bar.warning { background: var(--tf-warning); }
     .bar.blocked, .bar.alert { background: var(--tf-danger); }
     .bar.unlimited { background: var(--tf-success); }
-    .usage-track {
-      position: relative;
-      overflow: visible;
-      height: 10px;
-    }
-    .usage-track .bar { height: 10px; }
-    .video-row { padding: 12px 0; }
-    .video-row .usage-row { grid-template-columns: 40px minmax(88px, 18%) minmax(0, 1fr); }
-    .bar-pill {
-      position: absolute;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      background: var(--tf-bar);
-      color: #fff;
-      font-size: 0.72rem;
-      font-weight: 600;
-      border-radius: 999px;
-      padding: 3px 8px;
-      pointer-events: none;
-    }
+    .usage-track { height: 7px; }
+    .video-row { padding: 0; }
     .text-btn {
       background: transparent;
       color: var(--tf-primary);
@@ -736,7 +736,7 @@
       .window-arrow { display: none; }
       .date-bar { gap: 8px; }
       .metric .num { font-size: 30px; }
-      .usage-row { grid-template-columns: 40px minmax(64px, 34%) minmax(0, 1fr); }
+      .usage-row { grid-template-columns: 40px minmax(72px, 1.1fr) minmax(48px, 1.2fr) 3.75rem; }
       .gate-card { padding: 24px 20px; }
     }
   </style>
@@ -1463,7 +1463,7 @@
       const extra = document.createElement("div");
       extra.className = alert ? "sub alert" : "sub";
       extra.textContent = sub;
-      copy.append(num, cap, extra);
+      copy.append(cap, num, extra);
       node.append(copy);
       if (visual) node.append(visual);
       return node;
@@ -1550,12 +1550,14 @@
       const map = [
         ["youtube shorts", "youtube.com"],
         ["youtube", "youtube.com"],
+        ["vs code", "code.visualstudio.com"],
         ["visual studio", "visualstudio.com"],
         ["chrome", "chrome.google.com"],
         ["safari", "apple.com"],
         ["roblox", "roblox.com"],
         ["cursor", "cursor.com"],
         ["pycharm", "jetbrains.com"],
+        ["terminal", "apple.com"],
         ["github", "github.com"]
       ];
       for (let i = 0; i < map.length; i += 1) {
@@ -1590,13 +1592,23 @@
       return mark;
     }
 
-    function usageRow(name, duration, percent, label, asVideo) {
+    function usageRow(name, duration, percent, label, extras) {
+      extras = extras || {};
       const row = document.createElement("div");
-      row.className = asVideo ? "usage-row" : "usage-row";
+      row.className = "usage-row";
+      const copy = document.createElement("div");
+      copy.className = "usage-copy";
       const title = document.createElement("div");
       title.className = "usage-name";
       title.textContent = name;
       title.title = duration ? name + " · " + duration : name;
+      copy.append(title);
+      if (extras.hasLimit && extras.remaining) {
+        const limit = document.createElement("div");
+        limit.className = "usage-limit" + (extras.limitStatus ? " is-" + extras.limitStatus : "");
+        limit.textContent = extras.remaining === "0s" ? "No time left" : extras.remaining + " left";
+        copy.append(limit);
+      }
       const track = document.createElement("div");
       track.className = "bar-track usage-track";
       track.setAttribute("role", "progressbar");
@@ -1607,16 +1619,13 @@
       const bar = document.createElement("div");
       bar.className = "bar";
       track.append(bar);
-      const pill = document.createElement("span");
-      pill.className = "bar-pill";
-      pill.textContent = duration || "";
-      if (duration) track.append(pill);
+      const time = document.createElement("div");
+      time.className = "usage-duration";
+      time.textContent = duration || "";
       requestAnimationFrame(() => {
-        const width = Math.max(0, Math.min(100, percent || 0));
-        bar.style.width = width + "%";
-        if (duration) pill.style.left = Math.max(8, Math.min(92, width || 8)) + "%";
+        bar.style.width = Math.max(0, Math.min(100, percent || 0)) + "%";
       });
-      row.append(usageMark(name), title, track);
+      row.append(usageMark(name), copy, track, time);
       return row;
     }
 
@@ -1633,7 +1642,12 @@
           row.name,
           row.duration,
           100 * (row.seconds || 0) / max,
-          row.name + ", " + row.duration
+          row.name + ", " + row.duration,
+          {
+            hasLimit: Boolean(row.hasLimit),
+            remaining: row.remaining,
+            limitStatus: row.limitStatus
+          }
         ));
       });
       if (!rows.length) {
@@ -1839,27 +1853,41 @@
       activityStats.replaceChildren(
         metricCard(
           s.app_compact || s.app_label || "0s",
-          "Apps vs web",
+          "Screen Time",
           plural(s.app_count || 0, "app", "apps") + " · " + plural(s.session_count || 0, "session", "sessions"),
           donut(100 * (s.app_seconds || 0) / totalSplit)
         ),
         metricCard(
           s.site_compact || s.site_label || "0s",
-          "Browser",
+          "Browser Stats",
           (s.site_count || 0) + " pages · " + (s.host_count || 0) + " sites",
           sparkline(hourBuckets(payload.apps || []))
         ),
         metricCard(
           s.video_compact || s.video_label || "0s",
-          youtubeLimit ? (youtubeLimit.ratio_label || "Video budget") : "Video time",
-          plural(s.video_count || 0, "video", "videos"),
+          "Videos Watched",
+          [
+            plural(s.video_count || 0, "video", "videos"),
+            youtubeLimit && youtubeLimit.limit_seconds
+              ? ((youtubeLimit.remaining_compact && youtubeLimit.remaining_compact !== "0s")
+                ? youtubeLimit.remaining_compact + " left"
+                : "no time left")
+              : ""
+          ].filter(Boolean).join(" · "),
           miniProgress(youtubeLimit ? (youtubeLimit.percent || 0) : 0, videoAlert),
           videoAlert
         )
       );
       const apps = payload.apps || [];
       show(cardApps, apps.length > 0 || payload.has_data);
-      const appRows = apps.map((app) => ({ name: app.label, duration: app.seconds_compact || app.seconds_label, seconds: app.seconds }));
+      const appRows = apps.map((app) => ({
+        name: app.label,
+        duration: app.seconds_compact || app.seconds_label,
+        seconds: app.seconds,
+        hasLimit: Boolean(app.has_limit),
+        remaining: app.remaining_compact,
+        limitStatus: app.limit_status
+      }));
       const appsToggle = cardApps.querySelector("[data-apps-toggle]") || document.createElement("button");
       if (!appsToggle.dataset.appsToggle) {
         appsToggle.type = "button";
@@ -1895,7 +1923,11 @@
           group.seconds_compact || group.seconds_label,
           pct,
           group.label + ", " + (group.seconds_compact || group.seconds_label),
-          true
+          {
+            hasLimit: Boolean(group.has_limit || (limit && limit.limit_seconds)),
+            remaining: group.remaining_compact || (limit && limit.remaining_compact),
+            limitStatus: group.limit_status || (limit && limit.status)
+          }
         ));
         activityVideos.append(wrap);
       });

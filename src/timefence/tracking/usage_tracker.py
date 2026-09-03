@@ -4,6 +4,7 @@ from datetime import datetime, time
 from typing import Optional
 
 from ..activity.matching import usage_id_for_activity
+from ..bundle_ids import humanize_bundle_id, is_bundle_id
 from ..grants import effective_daily_limit
 from ..models.activity import KIND_APP, Observation
 from ..models.usage import SessionRecord, TodayUsage, UsageSnapshot
@@ -311,8 +312,9 @@ class UsageTracker:
                 format_timestamp(midnight),
             )
             self._session_duration += before
+            keep_identifier = self._session_identifier
             self._end_session(midnight, reason="day_rollover")
-            self._start_session(resource_id, midnight, None)
+            self._start_session(resource_id, midnight, None, identifier=keep_identifier)
         if after:
             last_total = self.store.add_active_seconds(
                 now.date().isoformat(),
@@ -327,9 +329,18 @@ class UsageTracker:
             self._start_session(resource_id, now, None)
         return before + after, last_total
 
-    def _start_session(self, resource_id, now, activity):
-        kind = activity.kind if activity is not None else KIND_APP
-        identifier = activity.identifier if activity is not None else ""
+    def _start_session(self, resource_id, now, activity, identifier=None):
+        kind = activity.kind if activity is not None else (self._session_kind or KIND_APP)
+        if not identifier:
+            if activity is not None and activity.identifier:
+                identifier = str(activity.identifier).strip()
+            elif self._session_identifier:
+                identifier = self._session_identifier
+            elif is_bundle_id(resource_id):
+                identifier = str(resource_id).strip()
+            else:
+                identifier = ""
+        identifier = str(identifier or "").strip()
         self._session_id = self.store.start_session(
             resource_id,
             format_timestamp(now),
@@ -341,6 +352,12 @@ class UsageTracker:
         self._session_duration = 0
         self._session_kind = kind
         self._session_identifier = identifier
+        if is_bundle_id(identifier):
+            self.store.ensure_bundle_name(
+                identifier,
+                humanize_bundle_id(identifier),
+                format_timestamp(now),
+            )
         _log("SCREEN_TIME_SESSION_STARTED", resource=resource_id, bundle_id=identifier or None)
         return True
 

@@ -133,3 +133,15 @@ class UsageStore(ABC):
     @abstractmethod
     def list_activity_dates(self) -> List[str]:
         """Distinct YYYY-MM-DD values that have usage, visits, watches, or sessions."""
+
+    @abstractmethod
+    def ensure_bundle_name(self, bundle_id: str, display_name: str, updated_at: str) -> None:
+        """Insert a bundle ID → name mapping if this ID has not been saved yet."""
+
+    @abstractmethod
+    def set_bundle_name(self, bundle_id: str, display_name: str, updated_at: str) -> None:
+        """Create or replace a parent-edited bundle name."""
+
+    @abstractmethod
+    def list_bundle_names(self) -> List[dict]:
+        """Saved bundle_id / display_name / source rows."""

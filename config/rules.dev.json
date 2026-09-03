@@ -114,7 +114,7 @@
     },
     "visual_studio": {
       "enabled": true,
-      "display_name": "Visual Studio",
+      "display_name": "VS Code",
       "type": "app",
       "process_pattern": "Visual Studio",
       "bundle_ids": [

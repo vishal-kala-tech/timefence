@@ -95,6 +95,9 @@ def test_parent_html_has_grant_and_rules_forms():
     assert "Limits today" in page
     assert "/api/parent/activity" in page
     assert "parent PIN" in page
+    assert "App names" not in page
+    assert 'id="panel-names"' not in page
+    assert "/api/parent/app-names" not in page
 
 
 def _opener():
