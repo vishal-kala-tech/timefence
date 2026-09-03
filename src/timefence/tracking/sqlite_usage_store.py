@@ -225,6 +225,49 @@ class SqliteUsageStore(UsageStore):
             ).fetchall()
         return {str(row["window_id"]): int(row["usage_seconds"] or 0) for row in rows}
 
+    def get_all_windows_for_date(self, usage_date: str) -> Dict[str, Dict[str, int]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT resource_id, window_id, usage_seconds FROM window_usage
+                WHERE usage_date = ?
+                ORDER BY resource_id, window_id
+                """,
+                (usage_date,),
+            ).fetchall()
+        out = {}
+        for row in rows:
+            out.setdefault(str(row["resource_id"]), {})[str(row["window_id"])] = int(row["usage_seconds"] or 0)
+        return out
+
+    def get_sessions_on_date(self, usage_date: str) -> List[SessionRecord]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM usage_sessions
+                WHERE started_at LIKE ?
+                ORDER BY started_at, id
+                """,
+                (f"{usage_date}%",),
+            ).fetchall()
+        return [_row_session(row) for row in rows]
+
+    def list_activity_dates(self) -> List[str]:
+        dates = set()
+        with self._connect() as conn:
+            for sql in (
+                "SELECT DISTINCT usage_date FROM daily_usage",
+                "SELECT DISTINCT usage_date FROM window_usage",
+                "SELECT DISTINCT usage_date FROM browse_visits",
+                "SELECT DISTINCT usage_date FROM watch_history",
+                "SELECT DISTINCT substr(started_at, 1, 10) FROM usage_sessions",
+            ):
+                for row in conn.execute(sql).fetchall():
+                    value = str(row[0] or "").strip()
+                    if len(value) >= 10:
+                        dates.add(value[:10])
+        return sorted(dates)
+
     def start_session(
         self,
         resource_id: str,

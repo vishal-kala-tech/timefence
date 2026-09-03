@@ -88,6 +88,12 @@ def test_parent_html_has_grant_and_rules_forms():
     assert "Standing rules" in page
     assert 'id="grant-form"' in page
     assert 'id="rules-form"' in page
+    assert 'id="panel-activity"' in page
+    assert 'id="lock"' in page
+    assert "Apps" in page
+    assert "Websites" in page
+    assert "Limits today" in page
+    assert "/api/parent/activity" in page
     assert "parent PIN" in page
 
 

@@ -121,3 +121,15 @@ class UsageStore(ABC):
     @abstractmethod
     def seed_watches(self, usage_date: str, resource_id: str, videos) -> None:
         """Copy legacy JSON videos into SQLite when that resource/date has no rows yet."""
+
+    @abstractmethod
+    def get_sessions_on_date(self, usage_date: str) -> List[SessionRecord]:
+        """Foreground sessions whose start timestamp falls on that local date."""
+
+    @abstractmethod
+    def get_all_windows_for_date(self, usage_date: str) -> Dict[str, Dict[str, int]]:
+        """Map resource_id → {window_id: seconds} for that date."""
+
+    @abstractmethod
+    def list_activity_dates(self) -> List[str]:
+        """Distinct YYYY-MM-DD values that have usage, visits, watches, or sessions."""

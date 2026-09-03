@@ -3,54 +3,76 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TimeFence setup</title>
+  <title>TimeFence parent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f4f1ea;
-      --card: #fffdf8;
-      --ink: #1c1917;
-      --muted: #57534e;
-      --line: #e7e5e4;
-      --ok: #15803d;
-      --ok-bg: #dcfce7;
-      --accent: #1d4ed8;
-      --accent-bg: #dbeafe;
-      --danger: #b45309;
-      --danger-bg: #ffedd5;
-      --focus: #1d4ed8;
+      --tf-bg: #F7F6F2;
+      --tf-surface: #FFFFFF;
+      --tf-surface-subtle: #FAF9F6;
+      --tf-text: #202020;
+      --tf-text-secondary: #5F5D58;
+      --tf-text-muted: #85827C;
+      --tf-border: #E5E2DC;
+      --tf-divider: #ECE9E4;
+      --tf-primary: #2563EB;
+      --tf-primary-hover: #1D4ED8;
+      --tf-primary-soft: #EAF2FF;
+      --tf-bar: #1f2a44;
+      --tf-track: #E7E7E7;
+      --tf-warning: #D99520;
+      --tf-danger: #DC4C4C;
+      --tf-success: #3D8B68;
+      --tf-nav: #676767;
+      --tf-lock: #EFEFEB;
+      --tf-shadow: 0 1px 2px rgba(0, 0, 0, 0.02), 0 4px 14px rgba(0, 0, 0, 0.025);
+      --tf-radius: 20px;
+      --bg: var(--tf-bg);
+      --card: var(--tf-surface);
+      --ink: var(--tf-text);
+      --muted: var(--tf-text-secondary);
+      --line: var(--tf-border);
+      --ok: var(--tf-success);
+      --ok-bg: #e8f4ec;
+      --accent: var(--tf-primary);
+      --accent-bg: var(--tf-primary-soft);
+      --warn: var(--tf-warning);
+      --warn-bg: #fff4e5;
+      --danger: var(--tf-danger);
+      --danger-bg: #fde8e6;
+      --focus: var(--tf-primary-hover);
+      --bar: var(--tf-bar);
+      --bar-soft: var(--tf-text-muted);
+      --track: var(--tf-track);
+      --shadow: var(--tf-shadow);
+      --radius: var(--tf-radius);
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #1c1917;
-        --card: #292524;
-        --ink: #fafaf9;
-        --muted: #a8a29e;
-        --line: #44403c;
-        --ok-bg: #14532d;
-        --accent-bg: #1e3a8a;
-        --danger-bg: #7c2d12;
-      }
-    }
-    * { box-sizing: border-box; }
+    html { color-scheme: light; }
     body {
       margin: 0;
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
-      background: var(--bg);
-      color: var(--ink);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-weight: 400;
+      background: var(--tf-bg);
+      color: var(--tf-text);
+      overflow-x: hidden;
     }
-    main { max-width: 820px; margin: 0 auto; padding: 28px 20px 64px; }
-    h1 { font-size: 2rem; margin: 0 0 6px; }
-    h2 { font-size: 1.35rem; margin: 0; }
-    h3 { font-size: 1.05rem; margin: 0 0 10px; }
-    .lede, .hint, .meta { color: var(--muted); }
+    main { max-width: 1280px; margin: 0 auto; padding: 0 20px 64px; }
+    #gate { max-width: 560px; margin: 28px auto; }
+    h1 { font-size: 1.45rem; margin: 0; font-weight: 700; letter-spacing: -0.02em; }
+    h2 { font-size: 1.05rem; margin: 0; font-weight: 600; }
+    h3 { font-size: 0.78rem; margin: 0 0 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tf-text-muted); }
+    .lede, .hint, .meta { color: var(--tf-text-secondary); font-weight: 400; }
     .lede { margin: 0 0 22px; font-size: 1.05rem; }
-    .hint { margin: 8px 0 0; font-size: 0.92rem; }
+    .hint { margin: 8px 0 0; font-size: 0.8125rem; color: var(--tf-text-muted); }
     .card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 20px 22px 18px;
+      background: var(--tf-surface);
+      border: 1px solid var(--tf-border);
+      border-radius: var(--tf-radius);
+      padding: 24px;
       margin-bottom: 16px;
+      box-shadow: var(--tf-shadow);
     }
     .row {
       display: flex;
@@ -59,22 +81,38 @@
       align-items: flex-end;
     }
     .grow { flex: 1 1 140px; }
-    label.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 0.92rem; }
+    label.field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-weight: 550;
+      font-size: 13px;
+      color: var(--tf-text-secondary);
+    }
     input[type="text"], input[type="password"], input[type="number"], select {
       font: inherit;
-      padding: 8px 10px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: var(--bg);
-      color: var(--ink);
+      font-size: 15px;
+      font-weight: 400;
+      padding: 10px 12px;
+      border: 1px solid var(--tf-border);
+      border-radius: 12px;
+      background: var(--tf-surface);
+      color: var(--tf-text);
       width: 100%;
     }
     input:focus, select:focus, button:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
     .check {
       display: flex;
       align-items: center;
-      gap: 8px;
-      font-weight: 600;
+      gap: 10px;
+      font-weight: 500;
+      font-size: 14px;
+      color: var(--tf-text-secondary);
+    }
+    .check input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--tf-primary);
     }
     button {
       font: inherit;
@@ -83,18 +121,19 @@
       border-radius: 999px;
       padding: 9px 16px;
       cursor: pointer;
-      background: var(--accent);
+      background: var(--tf-primary);
       color: #fff;
     }
-    button.secondary { background: var(--line); color: var(--ink); }
-    button.danger { background: var(--danger); }
-    button.ghost { background: transparent; color: var(--accent); padding: 6px 10px; }
+    button.secondary { background: var(--tf-lock); color: var(--tf-text); font-weight: 500; }
+    button.danger { background: var(--tf-danger); }
+    button.ghost { background: transparent; color: var(--tf-primary); padding: 6px 10px; font-weight: 500; }
     button:disabled { opacity: 0.55; cursor: not-allowed; }
     .banner {
-      border-radius: 12px;
-      padding: 10px 12px;
+      border-radius: 14px;
+      padding: 12px 16px;
       margin: 0 0 16px;
-      font-weight: 600;
+      font-weight: 550;
+      font-size: 15px;
     }
     .banner.ok { background: var(--ok-bg); color: var(--ok); }
     .banner.err { background: var(--danger-bg); color: var(--danger); }
@@ -116,34 +155,413 @@
     .window-row {
       display: grid;
       grid-template-columns: 1.4fr 0.8fr 0.8fr 0.7fr 1fr auto;
-      gap: 8px;
+      gap: 10px;
       align-items: end;
-      padding: 10px 0;
-      border-top: 1px solid var(--line);
+      padding: 14px;
+      margin-top: 10px;
+      background: var(--tf-surface-subtle);
+      border: 1px solid var(--tf-border);
+      border-radius: 14px;
     }
-    .window-row .field { font-weight: 500; }
-    .grant-list { list-style: none; padding: 0; margin: 12px 0 0; }
+    .window-row .field { font-weight: 550; }
+    .grant-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 4px;
+    }
+    .grant-form button { align-self: flex-start; min-height: 40px; }
+    .grant-list { list-style: none; padding: 0; margin: 8px 0 0; }
     .grant-list li {
       display: flex;
       justify-content: space-between;
       gap: 12px;
       align-items: center;
-      padding: 8px 0;
-      border-top: 1px solid var(--line);
+      padding: 12px 0;
+      border-top: 1px solid var(--tf-divider);
+      font-size: 15px;
+      font-weight: 550;
+      color: #252525;
     }
-    .resource-title { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .grant-list .secondary { min-height: 36px; padding: 6px 12px; }
+    .resource-title { align-items: center; margin-bottom: 16px; }
+    .resource-heading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+    .resource-heading h2 { margin: 0; }
+    .resource-heading .usage-mark { flex: 0 0 32px; }
+    .resource > .field { margin: 0 0 16px; }
+    .resource .segment { margin: 0 0 4px; }
+    .day-panel .check { margin: 12px 0 4px; }
+    .day-body { margin-top: 12px; }
+    .day-body .row { margin-bottom: 4px; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-    footer { margin-top: 8px; color: var(--muted); font-size: 0.9rem; }
-    @media (max-width: 720px) {
+    .page-intro { margin: 8px 0 16px; }
+    .page-title {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--tf-text);
+    }
+    .page-lede {
+      margin: 6px 0 0;
+      color: var(--tf-text-secondary);
+      font-size: 15px;
+      font-weight: 400;
+    }
+    .empty-card { text-align: center; padding: 48px 28px; }
+    .empty-title {
+      margin: 0 0 8px;
+      font-size: 20px;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      color: var(--tf-text);
+    }
+    .gate-card { padding: 32px 28px; }
+    .gate-card .brand { margin-bottom: 18px; }
+    .gate-card h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 0 0 8px;
+    }
+    footer {
+      margin-top: 24px;
+      color: var(--tf-text-muted);
+      font-size: 13px;
+      font-weight: 400;
+    }
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 14px 0 12px;
+      margin: 0 -4px 8px;
+      background: var(--bg);
+    }
+    .brand { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; color: var(--tf-text); }
+    .app-nav { display: flex; gap: 4px; flex: 1 1 auto; flex-wrap: wrap; }
+    .app-nav button {
+      background: transparent;
+      color: var(--tf-nav);
+      padding: 8px 12px;
+      min-height: 40px;
+      font-size: 15px;
+      font-weight: 500;
+    }
+    .app-nav button[aria-selected="true"] {
+      color: var(--tf-primary-hover);
+      background: var(--tf-primary-soft);
+      font-weight: 600;
+    }
+    .app-header #lock {
+      margin-left: auto;
+      background: var(--tf-lock);
+      color: var(--tf-text);
+      font-weight: 500;
+    }
+    #flash { margin-top: 8px; }
+    .date-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 8px 0 16px;
+    }
+    .date-stepper { display: flex; align-items: center; gap: 4px; }
+    .date-stepper button {
+      background: var(--card);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      font-size: 1.35rem;
+      line-height: 1;
+    }
+    .date-current {
+      position: relative;
+      display: flex;
+      align-items: center;
+      min-height: 40px;
+      padding: 0 12px;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--tf-text);
+      cursor: pointer;
+    }
+    .date-current input[type="date"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+    }
+    .date-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .segment {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      overflow: hidden;
+      background: var(--card);
+    }
+    .segment button {
+      background: transparent;
+      color: var(--tf-nav);
+      border-radius: 0;
+      padding: 8px 14px;
+      min-height: 40px;
+      font-weight: 500;
+    }
+    .segment button[aria-pressed="true"],
+    .segment button[aria-selected="true"] { background: var(--tf-primary-soft); color: var(--tf-primary-hover); font-weight: 600; }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin: 0 0 18px;
+    }
+    .metric {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px 22px;
+      min-height: 108px;
+    }
+    .metric-copy { min-width: 0; }
+    .metric .num {
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.05;
+      color: var(--tf-text);
+    }
+    .metric .cap {
+      margin-top: 8px;
+      color: var(--tf-text-secondary);
+      font-weight: 500;
+      font-size: 15px;
+    }
+    .metric .sub { color: var(--tf-text-muted); font-size: 13px; font-weight: 400; margin-top: 4px; }
+    .metric .sub.alert { color: var(--tf-danger); font-weight: 500; }
+    .donut {
+      width: 58px;
+      height: 58px;
+      flex: 0 0 58px;
+      border-radius: 50%;
+      position: relative;
+    }
+    .donut::after {
+      content: "";
+      position: absolute;
+      inset: 13px;
+      background: var(--card);
+      border-radius: 50%;
+    }
+    .spark {
+      width: 92px;
+      height: 42px;
+      flex: 0 0 92px;
+    }
+    .spark polyline { fill: none; stroke: var(--tf-bar); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .mini-bar {
+      width: 86px;
+      flex: 0 0 86px;
+    }
+    .mini-bar .bar-track { height: 8px; }
+    .lists-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .lists-grid:has(#card-sites.hidden),
+    .lists-grid:has(#card-apps.hidden) { grid-template-columns: 1fr; }
+    .dashboard {
+      display: grid;
+      grid-template-columns: minmax(0, 7fr) minmax(260px, 3fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+    .stack > .card, .sidebar > .card { margin-bottom: 0; }
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .card-head h2, .card-head h3 {
+      margin: 0;
+      text-transform: none;
+      letter-spacing: -0.02em;
+      font-size: 20px;
+      font-weight: 650;
+      color: var(--tf-text);
+    }
+    .usage-row {
+      display: grid;
+      grid-template-columns: 40px minmax(72px, 28%) minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+    }
+    .usage-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      justify-self: start;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #fff;
+      background: var(--tf-bar);
+      overflow: hidden;
+    }
+    .usage-mark.has-icon {
+      background: #fff;
+      border: 1px solid var(--line);
+      padding: 4px;
+    }
+    .usage-mark img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    .usage-name {
+      font-size: 15px;
+      font-weight: 550;
+      color: #252525;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .bar-track { height: 7px; background: var(--tf-track); border-radius: 99px; overflow: hidden; min-width: 48px; }
+    .bar {
+      height: 7px;
+      width: 0;
+      background: var(--tf-bar);
+      border-radius: 99px;
+      transition: width 0.45s ease;
+    }
+    .bar.warn, .bar.warning { background: var(--tf-warning); }
+    .bar.blocked, .bar.alert { background: var(--tf-danger); }
+    .bar.unlimited { background: var(--tf-success); }
+    .usage-track {
+      position: relative;
+      overflow: visible;
+      height: 10px;
+    }
+    .usage-track .bar { height: 10px; }
+    .video-row { padding: 12px 0; }
+    .video-row .usage-row { grid-template-columns: 40px minmax(88px, 18%) minmax(0, 1fr); }
+    .bar-pill {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--tf-bar);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 600;
+      border-radius: 999px;
+      padding: 3px 8px;
+      pointer-events: none;
+    }
+    .text-btn {
+      background: transparent;
+      color: var(--tf-primary);
+      padding: 6px 0;
+      min-height: 40px;
+      font-weight: 500;
+    }
+    .now-app { font-size: 1.05rem; font-weight: 600; color: var(--tf-text); }
+    .now-detail { color: var(--tf-text-muted); margin: 4px 0 0; font-size: 14px; font-weight: 400; }
+    .limit-row { padding: 10px 0; }
+    .limit-row + .limit-row { border-top: 1px solid var(--tf-divider); }
+    .limit-top { display: flex; justify-content: space-between; gap: 8px; font-weight: 550; font-size: 15px; color: #252525; }
+    .limit-remain { color: var(--tf-text-muted); font-size: 13px; font-weight: 400; margin-top: 6px; }
+    .limit-row.is-warning .limit-remain { color: var(--warn); }
+    .limit-row.is-blocked .limit-remain { color: var(--danger); }
+    .empty-note { color: var(--tf-text-muted); margin: 0; font-weight: 400; }
+    .timeline-scroll { overflow-x: auto; padding-bottom: 4px; }
+    .timeline {
+      min-width: 640px;
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      gap: 8px 10px;
+      align-items: center;
+    }
+    .timeline-hours {
+      display: flex;
+      justify-content: space-between;
+      color: var(--tf-text-muted);
+      font-size: 12px;
+      font-weight: 400;
+      grid-column: 2;
+    }
+    .timeline-app { font-weight: 550; font-size: 14px; color: #252525; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .timeline-track {
+      position: relative;
+      height: 18px;
+      background: var(--tf-track);
+      border-radius: 99px;
+    }
+    .timeline-block {
+      position: absolute;
+      top: 3px;
+      height: 12px;
+      border: 0;
+      border-radius: 99px;
+      background: var(--tf-bar);
+      min-width: 8px;
+      padding: 0;
+      cursor: pointer;
+    }
+    .timeline-block:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+    .summary-copy { margin: 0; color: var(--tf-text-secondary); line-height: 1.55; font-size: 15px; font-weight: 400; }
+    @media (max-width: 1000px) {
+      .dashboard { grid-template-columns: minmax(0, 63%) minmax(0, 37%); gap: 12px; }
+      .card { padding: 18px; }
+    }
+    @media (max-width: 700px) {
+      main { padding: 0 14px 48px; }
+      .card { padding: 16px; }
+      .app-header { position: static; }
+      .summary-grid, .lists-grid, .dashboard { grid-template-columns: 1fr; }
+      .setup-layout .sidebar { order: -1; }
       .window-row { grid-template-columns: 1fr 1fr; }
+      .window-row > button { grid-column: 1 / -1; justify-self: start; }
+      .date-bar { gap: 8px; }
+      .metric .num { font-size: 30px; }
+      .usage-row { grid-template-columns: 40px minmax(64px, 34%) minmax(0, 1fr); }
+      .gate-card { padding: 24px 20px; }
     }
   </style>
 </head>
 <body>
   <main>
-    <section id="gate" class="card hidden">
-      <h1>TimeFence parent setup</h1>
-      <p class="lede" id="pin-copy">Choose a PIN so only a parent can change limits or grant extra time.</p>
+    <section id="gate" class="card gate-card hidden">
+      <div class="brand">TimeFence</div>
+      <h1>Parent setup</h1>
+      <p class="lede" id="pin-copy">Choose a PIN so only a parent can see activity, change limits, or grant extra time.</p>
       <form id="pin-form">
         <div class="row">
           <label class="field grow">PIN
@@ -155,51 +573,152 @@
         </div>
         <p class="banner err hidden" id="pin-error"></p>
         <p class="hint">At least 4 characters. This stays on this Mac only.</p>
-        <p class="actions" style="margin-top:14px">
+        <p class="actions" style="margin-top:18px">
           <button type="submit" id="pin-submit">Continue</button>
         </p>
       </form>
     </section>
 
     <section id="app" class="hidden">
-      <div class="head">
-        <div>
-          <h1>TimeFence setup</h1>
-          <p class="lede">Standing limits apply after the next check (about 15 seconds). Bonus time is for today only and is gone at midnight.</p>
-        </div>
+      <header class="app-header">
+        <div class="brand">TimeFence</div>
+        <nav class="app-nav" id="page-tabs" aria-label="Parent pages">
+          <button type="button" id="tab-overview" aria-selected="false">Overview</button>
+          <button type="button" id="tab-activity" aria-selected="true">Activity</button>
+          <button type="button" id="tab-setup" aria-selected="false">Limits</button>
+          <button type="button" id="tab-requests" aria-selected="false">Requests</button>
+        </nav>
         <button type="button" class="secondary" id="lock">Lock</button>
-      </div>
+      </header>
       <p class="banner hidden" id="flash"></p>
 
-      <article class="card">
-        <h2>Grant extra time</h2>
-        <p class="hint">Adds minutes on top of today’s standing cap. Use this when a session needs a little more, without changing the usual rules.</p>
-        <form id="grant-form">
-          <div class="row">
-            <label class="field grow">App or site
-              <select id="grant-resource" required></select>
+      <div id="panel-activity">
+        <div class="date-bar">
+          <div class="date-stepper">
+            <button type="button" id="day-prev" aria-label="Previous day">‹</button>
+            <label class="date-current">
+              <span id="day-label">Today</span>
+              <input id="day-picker" type="date" aria-label="Choose a day">
             </label>
-            <label class="field">Minutes
-              <input id="grant-minutes" type="number" min="1" step="1" value="15" required>
-            </label>
-            <button type="submit">Grant</button>
+            <button type="button" id="day-next" aria-label="Next day">›</button>
           </div>
-        </form>
-        <ul class="grant-list" id="grant-list"></ul>
-        <p class="hint" id="grant-empty">No bonus time is active.</p>
-      </article>
-
-      <form id="rules-form">
-        <div class="head" style="margin: 8px 0 12px">
-          <h2>Standing rules</h2>
-          <div class="actions">
-            <label class="check"><input id="log-browsing" type="checkbox"> Track websites in Chrome</label>
-            <button type="submit">Save rules</button>
+          <div class="date-actions">
+            <button type="button" class="secondary" id="day-today">Today</button>
+            <div class="segment" role="group" aria-label="Day or week">
+              <button type="button" id="range-day" aria-pressed="true">Day</button>
+              <button type="button" id="range-week" aria-pressed="false" disabled title="Week view is not available yet">Week</button>
+            </div>
           </div>
         </div>
-        <div id="resources"></div>
-        <p class="actions"><button type="submit">Save rules</button></p>
-      </form>
+
+        <p class="banner hidden" id="activity-empty">No activity was recorded on this day.</p>
+        <div class="summary-grid" id="activity-stats"></div>
+
+        <div class="lists-grid">
+            <article class="card" id="card-apps">
+              <div class="card-head"><h2>Apps</h2></div>
+              <div id="activity-apps"></div>
+            </article>
+            <article class="card" id="card-sites">
+              <div class="card-head">
+                <h2>Websites</h2>
+                <button type="button" class="text-btn hidden" id="sites-toggle">See all →</button>
+              </div>
+              <div id="activity-sites"></div>
+            </article>
+        </div>
+        <article class="card" id="card-videos">
+          <div class="card-head"><h2>Videos</h2></div>
+          <div id="activity-videos"></div>
+        </article>
+
+        <div class="dashboard">
+          <div class="stack" id="activity-main">
+            <article class="card" id="card-timeline">
+              <div class="card-head"><h2>Activity timeline</h2></div>
+              <div id="activity-timeline"></div>
+            </article>
+          </div>
+          <aside class="stack sidebar" aria-label="Today at a glance">
+            <article class="card" id="card-now">
+              <h3>Right now</h3>
+              <div id="activity-now"></div>
+            </article>
+            <article class="card" id="card-limits">
+              <div class="card-head">
+                <h2>Limits today</h2>
+                <button type="button" class="text-btn" id="grant-more">+ Grant more time</button>
+              </div>
+              <div id="activity-limits"></div>
+            </article>
+            <article class="card hidden" id="card-next">
+              <h3>Next rule</h3>
+              <div id="activity-next"></div>
+            </article>
+            <article class="card" id="card-requests-side">
+              <h3>Requests</h3>
+              <p class="empty-note">No pending requests</p>
+            </article>
+          </aside>
+        </div>
+
+        <article class="card" id="activity-narrative-card">
+          <div class="card-head"><h2>Daily summary</h2></div>
+          <p class="summary-copy" id="activity-narrative"></p>
+        </article>
+        <p class="hint" id="activity-hint"></p>
+      </div>
+
+      <div id="panel-setup" class="hidden">
+        <div class="page-intro">
+          <h2 class="page-title">Limits</h2>
+          <p class="page-lede">Standing caps, schedules, and extra time for today.</p>
+        </div>
+        <div class="dashboard setup-layout">
+          <form id="rules-form" class="stack">
+            <article class="card">
+              <div class="card-head">
+                <h2>Standing rules</h2>
+                <div class="actions">
+                  <label class="check"><input id="log-browsing" type="checkbox"> Track websites in Chrome</label>
+                  <button type="submit">Save rules</button>
+                </div>
+              </div>
+              <p class="hint">School days and weekends can use different hours. Extra time lasts until midnight.</p>
+            </article>
+            <div id="resources" class="stack"></div>
+            <p class="actions rules-save"><button type="submit">Save rules</button></p>
+          </form>
+          <aside class="stack sidebar">
+            <article class="card" id="card-grant">
+              <div class="card-head"><h2>Grant extra time</h2></div>
+              <p class="hint">Adds minutes on top of today’s standing cap. Use this when a session needs a little more, without changing the usual rules.</p>
+              <form id="grant-form" class="grant-form">
+                <label class="field">App or site
+                  <select id="grant-resource" required></select>
+                </label>
+                <label class="field">Minutes
+                  <input id="grant-minutes" type="number" min="1" step="1" value="15" required>
+                </label>
+                <button type="submit">Grant</button>
+              </form>
+              <ul class="grant-list" id="grant-list"></ul>
+              <p class="hint" id="grant-empty">No bonus time is active.</p>
+            </article>
+          </aside>
+        </div>
+      </div>
+
+      <div id="panel-requests" class="hidden">
+        <div class="page-intro">
+          <h2 class="page-title">Requests</h2>
+          <p class="page-lede">When someone asks for more time, it will show up here.</p>
+        </div>
+        <article class="card empty-card">
+          <p class="empty-title">No pending requests</p>
+          <p class="empty-note">Approvals will appear on this page. Until then, use Limits to grant extra time.</p>
+        </article>
+      </div>
       <footer>This page is only on this Mac at http://127.0.0.1:8743/setup. The kid status page does not link here.</footer>
     </section>
   </main>
@@ -219,6 +738,41 @@
     const grantList = document.getElementById("grant-list");
     const grantEmpty = document.getElementById("grant-empty");
     const logBrowsing = document.getElementById("log-browsing");
+    const tabOverview = document.getElementById("tab-overview");
+    const tabActivity = document.getElementById("tab-activity");
+    const tabSetup = document.getElementById("tab-setup");
+    const tabRequests = document.getElementById("tab-requests");
+    const panelActivity = document.getElementById("panel-activity");
+    const panelSetup = document.getElementById("panel-setup");
+    const panelRequests = document.getElementById("panel-requests");
+    const dayLabel = document.getElementById("day-label");
+    const dayPicker = document.getElementById("day-picker");
+    const dayPrev = document.getElementById("day-prev");
+    const dayNext = document.getElementById("day-next");
+    const dayToday = document.getElementById("day-today");
+    const activityHint = document.getElementById("activity-hint");
+    const activityEmpty = document.getElementById("activity-empty");
+    const activityStats = document.getElementById("activity-stats");
+    const activityApps = document.getElementById("activity-apps");
+    const activitySites = document.getElementById("activity-sites");
+    const activityVideos = document.getElementById("activity-videos");
+    const activityTimeline = document.getElementById("activity-timeline");
+    const activityNow = document.getElementById("activity-now");
+    const activityLimits = document.getElementById("activity-limits");
+    const activityNext = document.getElementById("activity-next");
+    const activityNarrative = document.getElementById("activity-narrative");
+    const activityNarrativeCard = document.getElementById("activity-narrative-card");
+    const cardApps = document.getElementById("card-apps");
+    const cardTimeline = document.getElementById("card-timeline");
+    const cardSites = document.getElementById("card-sites");
+    const cardVideos = document.getElementById("card-videos");
+    const cardNext = document.getElementById("card-next");
+    const sitesToggle = document.getElementById("sites-toggle");
+    let activityDate = null;
+    let activityToday = null;
+    let lastActivity = null;
+    let showAllApps = false;
+    let showAllSites = false;
 
     function show(el, on) { el.classList.toggle("hidden", !on); }
 
@@ -361,8 +915,8 @@
       windows.className = "windows";
       const add = document.createElement("button");
       add.type = "button";
-      add.className = "secondary";
-      add.textContent = "Add window";
+      add.className = "text-btn";
+      add.textContent = "+ Add window";
       add.addEventListener("click", () => {
         windows.append(windowRow({ name: "new window", start: "16:00", end: "18:00", limit_minutes: 0, warning_minutes: [] }));
       });
@@ -391,9 +945,13 @@
       card.className = "card resource";
       card.dataset.id = resource.id;
       const title = document.createElement("div");
-      title.className = "resource-title";
+      title.className = "card-head resource-title";
+      const headingWrap = document.createElement("div");
+      headingWrap.className = "resource-heading";
+      headingWrap.append(usageMark(resource.display_name || resource.id));
       const heading = document.createElement("h2");
       heading.textContent = resource.display_name || resource.id;
+      headingWrap.append(heading);
       const enabled = document.createElement("label");
       enabled.className = "check";
       const box = document.createElement("input");
@@ -401,10 +959,12 @@
       box.className = "enabled";
       box.checked = resource.enabled !== false;
       enabled.append(box, " Enabled");
-      title.append(heading, enabled);
+      title.append(headingWrap, enabled);
       const name = input({ type: "text", className: "display-name", value: resource.display_name || resource.id });
       const tabs = document.createElement("div");
-      tabs.className = "tabs";
+      tabs.className = "segment";
+      tabs.setAttribute("role", "tablist");
+      tabs.setAttribute("aria-label", "Day type");
       const panels = document.createElement("div");
       const days = [
         ["default", "School days", resource.default, false],
@@ -415,6 +975,7 @@
         const tab = document.createElement("button");
         tab.type = "button";
         tab.textContent = label;
+        tab.setAttribute("role", "tab");
         tab.setAttribute("aria-selected", index === 0 ? "true" : "false");
         const panel = dayPanel(key, day, customizable);
         if (index !== 0) panel.classList.add("hidden");
@@ -474,6 +1035,7 @@
           try {
             renderGrants(await api("/api/grants/" + encodeURIComponent(row.id), { method: "DELETE" }));
             flash("ok", "Cleared bonus time for " + row.label + ".");
+            if (activityDate) loadActivity(activityDate).catch((err) => flash("err", err.message));
           } catch (err) {
             flash("err", err.message);
           }
@@ -482,6 +1044,479 @@
         grantList.append(item);
       });
       show(grantEmpty, !(payload.grants || []).length);
+    }
+
+    function setPageTab(name) {
+      const onActivity = name === "activity" || name === "overview";
+      tabOverview.setAttribute("aria-selected", name === "overview" ? "true" : "false");
+      tabActivity.setAttribute("aria-selected", name === "activity" ? "true" : "false");
+      tabSetup.setAttribute("aria-selected", name === "setup" ? "true" : "false");
+      tabRequests.setAttribute("aria-selected", name === "requests" ? "true" : "false");
+      show(panelActivity, onActivity);
+      show(panelSetup, name === "setup");
+      show(panelRequests, name === "requests");
+    }
+
+    function metricCard(value, title, sub, visual, alert) {
+      const node = document.createElement("article");
+      node.className = "metric";
+      const copy = document.createElement("div");
+      copy.className = "metric-copy";
+      const num = document.createElement("div");
+      num.className = "num";
+      num.textContent = value;
+      const cap = document.createElement("div");
+      cap.className = "cap";
+      cap.textContent = title;
+      const extra = document.createElement("div");
+      extra.className = alert ? "sub alert" : "sub";
+      extra.textContent = sub;
+      copy.append(num, cap, extra);
+      node.append(copy);
+      if (visual) node.append(visual);
+      return node;
+    }
+
+    function donut(appShare) {
+      const pct = Math.max(0, Math.min(100, Math.round(appShare || 0)));
+      const node = document.createElement("div");
+      node.className = "donut";
+      node.style.background = "conic-gradient(var(--tf-bar) 0 " + pct + "%, var(--tf-track) " + pct + "% 100%)";
+      node.setAttribute("role", "img");
+      node.setAttribute("aria-label", "Apps " + pct + " percent of recorded time, the rest is web");
+      return node;
+    }
+
+    function sparkline(values) {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("class", "spark");
+      svg.setAttribute("viewBox", "0 0 92 42");
+      svg.setAttribute("aria-hidden", "true");
+      const nums = values.length ? values : [0, 0];
+      const max = Math.max(1, ...nums);
+      const pts = nums.map((value, index) => {
+        const x = nums.length === 1 ? 46 : (index / (nums.length - 1)) * 92;
+        const y = 38 - (value / max) * 32;
+        return x.toFixed(1) + "," + y.toFixed(1);
+      }).join(" ");
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+      line.setAttribute("points", pts);
+      svg.append(line);
+      return svg;
+    }
+
+    function miniProgress(percent, alert) {
+      const wrap = document.createElement("div");
+      wrap.className = "mini-bar";
+      const track = document.createElement("div");
+      track.className = "bar-track";
+      const bar = document.createElement("div");
+      bar.className = "bar" + (alert ? " alert" : "");
+      track.append(bar);
+      wrap.append(track);
+      requestAnimationFrame(() => { bar.style.width = Math.max(0, Math.min(100, percent || 0)) + "%"; });
+      return wrap;
+    }
+
+    function hourBuckets(apps) {
+      const hours = Array(24).fill(0);
+      (apps || []).forEach((app) => {
+        (app.sessions || []).forEach((session) => {
+          const start = parseStamp(session.started_at);
+          if (!start) return;
+          hours[start.getHours()] += session.seconds || 0;
+        });
+      });
+      const first = hours.findIndex((value) => value > 0);
+      if (first < 0) return hours.slice(8, 21);
+      const last = hours.reduce((idx, value, hour) => value > 0 ? hour : idx, first);
+      return hours.slice(Math.max(0, first), Math.min(24, last + 1));
+    }
+
+    function markColor(name) {
+      const key = String(name || "").toLowerCase();
+      if (key.includes("chrome")) return "#3b82f6";
+      if (key.includes("safari")) return "#6366f1";
+      if (key.includes("youtube")) return "#dc2626";
+      if (key.includes("github")) return "#111827";
+      if (key.includes("gmail") || key.includes("mail.google")) return "#ea4335";
+      if (key.includes("cursor")) return "#1f2a44";
+      if (key.includes("terminal")) return "#334155";
+      if (key.includes("visual") || key.includes("code") || key.includes("studio")) return "#0ea5e9";
+      if (key.includes("roblox")) return "#ef4444";
+      let hash = 0;
+      for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) % 360;
+      return "hsl(" + hash + " 28% 38%)";
+    }
+
+    function iconHost(name) {
+      const raw = String(name || "").trim().toLowerCase().replace(/^www\./, "");
+      if (!raw) return null;
+      if (raw.includes(".") && !/\s/.test(raw) && !raw.startsWith("127.") && raw !== "localhost") {
+        return raw.split("/")[0];
+      }
+      const map = [
+        ["youtube shorts", "youtube.com"],
+        ["youtube", "youtube.com"],
+        ["visual studio", "visualstudio.com"],
+        ["chrome", "chrome.google.com"],
+        ["safari", "apple.com"],
+        ["roblox", "roblox.com"],
+        ["cursor", "cursor.com"],
+        ["pycharm", "jetbrains.com"],
+        ["github", "github.com"]
+      ];
+      for (let i = 0; i < map.length; i += 1) {
+        if (raw === map[i][0] || raw.includes(map[i][0])) return map[i][1];
+      }
+      return null;
+    }
+
+    function faviconUrl(host) {
+      return "https://www.google.com/s2/favicons?domain=" + encodeURIComponent(host) + "&sz=64";
+    }
+
+    function usageMark(name) {
+      const mark = document.createElement("div");
+      mark.className = "usage-mark";
+      mark.style.background = markColor(name);
+      mark.textContent = (name || "?").replace(/^www\./, "").charAt(0).toUpperCase();
+      mark.setAttribute("aria-hidden", "true");
+      const host = iconHost(name);
+      if (!host) return mark;
+      const img = new Image();
+      img.alt = "";
+      img.referrerPolicy = "no-referrer";
+      img.decoding = "async";
+      img.addEventListener("load", () => {
+        mark.textContent = "";
+        mark.style.background = "";
+        mark.classList.add("has-icon");
+        mark.append(img);
+      });
+      img.src = faviconUrl(host);
+      return mark;
+    }
+
+    function usageRow(name, duration, percent, label, asVideo) {
+      const row = document.createElement("div");
+      row.className = asVideo ? "usage-row" : "usage-row";
+      const title = document.createElement("div");
+      title.className = "usage-name";
+      title.textContent = name;
+      title.title = duration ? name + " · " + duration : name;
+      const track = document.createElement("div");
+      track.className = "bar-track usage-track";
+      track.setAttribute("role", "progressbar");
+      track.setAttribute("aria-valuemin", "0");
+      track.setAttribute("aria-valuemax", "100");
+      track.setAttribute("aria-valuenow", String(Math.round(percent)));
+      track.setAttribute("aria-label", label || (name + " " + duration));
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      track.append(bar);
+      const pill = document.createElement("span");
+      pill.className = "bar-pill";
+      pill.textContent = duration || "";
+      if (duration) track.append(pill);
+      requestAnimationFrame(() => {
+        const width = Math.max(0, Math.min(100, percent || 0));
+        bar.style.width = width + "%";
+        if (duration) pill.style.left = Math.max(8, Math.min(92, width || 8)) + "%";
+      });
+      row.append(usageMark(name), title, track);
+      return row;
+    }
+
+    function plural(n, one, many) {
+      return n + " " + (n === 1 ? one : many);
+    }
+
+    function renderUsageList(target, rows, expanded, toggle, moreLabel, lessLabel) {
+      const max = Math.max(1, ...rows.map((row) => row.seconds || 0));
+      const visible = expanded ? rows : rows.slice(0, 5);
+      target.replaceChildren();
+      visible.forEach((row) => {
+        target.append(usageRow(
+          row.name,
+          row.duration,
+          100 * (row.seconds || 0) / max,
+          row.name + ", " + row.duration
+        ));
+      });
+      if (!rows.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-note";
+        empty.textContent = "Nothing recorded.";
+        target.append(empty);
+      }
+      show(toggle, rows.length > 5);
+      toggle.textContent = expanded ? lessLabel : moreLabel;
+    }
+
+    function renderCurrent(current) {
+      activityNow.replaceChildren();
+      if (!current) {
+        const empty = document.createElement("p");
+        empty.className = "empty-note";
+        empty.textContent = "No active session";
+        activityNow.append(empty);
+        return;
+      }
+      const app = document.createElement("div");
+      app.className = "now-app";
+      app.textContent = current.label;
+      activityNow.append(app);
+      if (current.detail) {
+        const detail = document.createElement("p");
+        detail.className = "now-detail";
+        detail.textContent = current.detail;
+        activityNow.append(detail);
+      }
+      const time = document.createElement("p");
+      time.className = "now-detail";
+      time.textContent = "Active for " + (current.compact_label || current.seconds_label);
+      activityNow.append(time);
+    }
+
+    function renderLimits(rows) {
+      activityLimits.replaceChildren();
+      if (!(rows || []).length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-note";
+        empty.textContent = "No daily limits are set.";
+        activityLimits.append(empty);
+        return;
+      }
+      rows.forEach((row) => {
+        const wrap = document.createElement("div");
+        wrap.className = "limit-row is-" + (row.status || "ok");
+        const top = document.createElement("div");
+        top.className = "limit-top";
+        const name = document.createElement("span");
+        name.textContent = row.label;
+        const ratio = document.createElement("span");
+        ratio.textContent = row.ratio_label;
+        top.append(name, ratio);
+        const track = document.createElement("div");
+        track.className = "bar-track";
+        track.style.marginTop = "8px";
+        track.setAttribute("role", "progressbar");
+        track.setAttribute("aria-valuemin", "0");
+        track.setAttribute("aria-valuemax", "100");
+        track.setAttribute("aria-valuenow", String(row.percent || 0));
+        track.setAttribute("aria-label", row.label + ", " + row.ratio_label + ", " + row.remaining_label);
+        const bar = document.createElement("div");
+        bar.className = "bar " + (row.status || "ok");
+        track.append(bar);
+        requestAnimationFrame(() => { bar.style.width = Math.max(0, Math.min(100, row.percent || 0)) + "%"; });
+        const remain = document.createElement("div");
+        remain.className = "limit-remain";
+        remain.textContent = row.bonus ? row.remaining_label + " · Bonus time active" : row.remaining_label;
+        wrap.append(top, track, remain);
+        activityLimits.append(wrap);
+      });
+    }
+
+    function renderNextRule(rule) {
+      show(cardNext, Boolean(rule));
+      activityNext.replaceChildren();
+      if (!rule) return;
+      const title = document.createElement("div");
+      title.className = "now-app";
+      title.textContent = rule.title;
+      const detail = document.createElement("p");
+      detail.className = "now-detail";
+      detail.textContent = rule.detail || rule.span || "";
+      activityNext.append(title, detail);
+    }
+
+    function parseStamp(value, day) {
+      if (!value) return null;
+      const stamp = new Date(value);
+      if (!isNaN(stamp.getTime())) return stamp;
+      return null;
+    }
+
+    function hourLabel(hour) {
+      if (hour === 0 || hour === 24) return "12am";
+      if (hour === 12) return "12pm";
+      return hour < 12 ? hour + "am" : (hour - 12) + "pm";
+    }
+
+    function renderTimeline(apps, day) {
+      activityTimeline.replaceChildren();
+      const sessions = [];
+      (apps || []).forEach((app) => {
+        (app.sessions || []).forEach((session) => {
+          const start = parseStamp(session.started_at, day);
+          if (!start) return;
+          const end = session.open ? new Date() : parseStamp(session.ended_at, day);
+          sessions.push({
+            app: app.label,
+            start,
+            end: end && end > start ? end : new Date(start.getTime() + Math.max(1000, (session.seconds || 1) * 1000)),
+            duration: session.seconds_label,
+            when: session.when_label
+          });
+        });
+      });
+      if (!sessions.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-note";
+        empty.textContent = "Session timeline unavailable";
+        activityTimeline.append(empty);
+        return;
+      }
+      let minHour = 24;
+      let maxHour = 0;
+      sessions.forEach((session) => {
+        minHour = Math.min(minHour, session.start.getHours());
+        const endHour = session.end.getHours() + (session.end.getMinutes() || session.end.getSeconds() ? 1 : 0);
+        maxHour = Math.max(maxHour, endHour);
+      });
+      minHour = Math.max(0, minHour <= 7 ? Math.min(6, minHour) : minHour - 1);
+      maxHour = Math.min(24, Math.max(maxHour + 1, minHour + 8));
+      const startMin = minHour * 60;
+      const spanMin = Math.max(60, maxHour * 60 - startMin);
+      const grouped = [];
+      const index = {};
+      sessions.forEach((session) => {
+        if (index[session.app] == null) {
+          index[session.app] = grouped.length;
+          grouped.push({ label: session.app, sessions: [] });
+        }
+        grouped[index[session.app]].sessions.push(session);
+      });
+      const board = document.createElement("div");
+      board.className = "timeline-scroll";
+      const grid = document.createElement("div");
+      grid.className = "timeline";
+      const hours = document.createElement("div");
+      hours.className = "timeline-hours";
+      const ticks = 6;
+      for (let i = 0; i <= ticks; i += 1) {
+        const mark = document.createElement("span");
+        mark.textContent = hourLabel(Math.round(minHour + (i * (maxHour - minHour) / ticks)));
+        hours.append(mark);
+      }
+      grid.append(document.createElement("div"), hours);
+      grouped.forEach((row) => {
+        const name = document.createElement("div");
+        name.className = "timeline-app";
+        name.textContent = row.label;
+        const track = document.createElement("div");
+        track.className = "timeline-track";
+        row.sessions.forEach((session) => {
+          const left = ((session.start.getHours() * 60 + session.start.getMinutes()) - startMin) / spanMin;
+          const right = ((session.end.getHours() * 60 + session.end.getMinutes()) - startMin) / spanMin;
+          const block = document.createElement("button");
+          block.type = "button";
+          block.className = "timeline-block";
+          block.style.left = (Math.max(0, left) * 100) + "%";
+          block.style.width = (Math.max(0.6, (right - left) * 100)) + "%";
+          const tip = row.label + ", " + session.when + ", " + session.duration;
+          block.title = tip;
+          block.setAttribute("aria-label", tip);
+          track.append(block);
+        });
+        grid.append(name, track);
+      });
+      board.append(grid);
+      activityTimeline.append(board);
+    }
+
+    function renderActivity(payload) {
+      if (activityDate && activityDate !== payload.date) {
+        showAllApps = false;
+        showAllSites = false;
+      }
+      lastActivity = payload;
+      activityDate = payload.date;
+      activityToday = payload.today || payload.date;
+      dayLabel.textContent = payload.short_label || payload.label;
+      dayPicker.value = payload.date;
+      dayPicker.max = payload.today || payload.date;
+      dayNext.disabled = !payload.next_date;
+      activityHint.textContent = payload.hint || "";
+      show(activityEmpty, !payload.has_data);
+      const s = payload.summary || {};
+      const totalSplit = Math.max(1, (s.app_seconds || 0) + (s.site_seconds || 0));
+      const youtubeLimit = (payload.limits || []).find((row) => row.id === "youtube");
+      const videoAlert = Boolean(youtubeLimit && youtubeLimit.status && youtubeLimit.status !== "ok");
+      activityStats.replaceChildren(
+        metricCard(
+          s.app_compact || s.app_label || "0s",
+          "Apps vs web",
+          plural(s.app_count || 0, "app", "apps") + " · " + plural(s.session_count || 0, "session", "sessions"),
+          donut(100 * (s.app_seconds || 0) / totalSplit)
+        ),
+        metricCard(
+          s.site_compact || s.site_label || "0s",
+          "Browser",
+          (s.site_count || 0) + " pages · " + (s.host_count || 0) + " sites",
+          sparkline(hourBuckets(payload.apps || []))
+        ),
+        metricCard(
+          s.video_compact || s.video_label || "0s",
+          youtubeLimit ? (youtubeLimit.ratio_label || "Video budget") : "Video time",
+          plural(s.video_count || 0, "video", "videos"),
+          miniProgress(youtubeLimit ? (youtubeLimit.percent || 0) : 0, videoAlert),
+          videoAlert
+        )
+      );
+      const apps = payload.apps || [];
+      show(cardApps, apps.length > 0 || payload.has_data);
+      const appRows = apps.map((app) => ({ name: app.label, duration: app.seconds_compact || app.seconds_label, seconds: app.seconds }));
+      const appsToggle = cardApps.querySelector("[data-apps-toggle]") || document.createElement("button");
+      if (!appsToggle.dataset.appsToggle) {
+        appsToggle.type = "button";
+        appsToggle.className = "text-btn";
+        appsToggle.dataset.appsToggle = "1";
+        appsToggle.addEventListener("click", () => {
+          showAllApps = !showAllApps;
+          if (lastActivity) renderActivity(lastActivity);
+        });
+        cardApps.querySelector(".card-head").append(appsToggle);
+      }
+      renderUsageList(activityApps, appRows, showAllApps, appsToggle, "View all apps →", "Show fewer ←");
+      const hasSessions = apps.some((app) => (app.sessions || []).length);
+      show(cardTimeline, hasSessions);
+      renderTimeline(apps, payload.date);
+      const hosts = (payload.sites || {}).hosts || [];
+      show(cardSites, hosts.length > 0);
+      const siteRows = hosts.map((host) => ({ name: host.host, duration: host.seconds_compact || host.seconds_label, seconds: host.seconds }));
+      renderUsageList(activitySites, siteRows, showAllSites, sitesToggle, "See all →", "Show fewer ←");
+      const videos = payload.videos || [];
+      show(cardVideos, videos.length > 0);
+      activityVideos.replaceChildren();
+      const maxVid = Math.max(1, ...videos.map((row) => row.seconds || 0));
+      videos.forEach((group) => {
+        const wrap = document.createElement("div");
+        wrap.className = "video-row";
+        const limit = (payload.limits || []).find((row) => row.id === group.id);
+        const pct = limit && limit.limit_seconds
+          ? Math.min(100, 100 * (group.seconds || 0) / limit.limit_seconds)
+          : 100 * (group.seconds || 0) / maxVid;
+        wrap.append(usageRow(
+          group.label,
+          group.seconds_compact || group.seconds_label,
+          pct,
+          group.label + ", " + (group.seconds_compact || group.seconds_label),
+          true
+        ));
+        activityVideos.append(wrap);
+      });
+      renderCurrent(payload.current);
+      renderLimits(payload.limits || []);
+      renderNextRule(payload.next_rule);
+      activityNarrative.textContent = payload.daily_summary || payload.narrative || "";
+      show(activityNarrativeCard, Boolean(payload.daily_summary || payload.narrative));
+    }
+
+    async function loadActivity(date) {
+      const query = date ? "?date=" + encodeURIComponent(date) : "";
+      renderActivity(await api("/api/parent/activity" + query));
     }
 
     async function loadWorkspace() {
@@ -495,8 +1530,8 @@
       show(gate, true);
       const first = !session.has_pin;
       pinCopy.textContent = first
-        ? "Choose a PIN so only a parent can change limits or grant extra time."
-        : "Enter the parent PIN to edit rules or grant extra time.";
+        ? "Choose a PIN so only a parent can see activity, change limits, or grant extra time."
+        : "Enter the parent PIN to see activity, edit rules, or grant extra time.";
       pinSubmit.textContent = first ? "Set PIN and continue" : "Unlock";
       show(pinConfirmWrap, first);
       pinConfirm.required = first;
@@ -510,6 +1545,7 @@
     function showApp() {
       show(gate, false);
       show(app, true);
+      setPageTab("activity");
     }
 
     pinForm.addEventListener("submit", async (event) => {
@@ -523,12 +1559,51 @@
       try {
         await api("/api/pin", { method: "POST", body: { pin } });
         showApp();
-        await loadWorkspace();
+        try {
+          await Promise.all([loadWorkspace(), loadActivity()]);
+        } catch (err) {
+          flash("err", err.message);
+        }
       } catch (err) {
         pinError.textContent = err.message;
         show(pinError, true);
       }
     });
+
+    tabOverview.addEventListener("click", () => setPageTab("overview"));
+    tabActivity.addEventListener("click", () => setPageTab("activity"));
+    tabSetup.addEventListener("click", () => setPageTab("setup"));
+    tabRequests.addEventListener("click", () => setPageTab("requests"));
+    document.getElementById("grant-more").addEventListener("click", () => {
+      setPageTab("setup");
+      document.getElementById("grant-form").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    sitesToggle.addEventListener("click", () => {
+      showAllSites = !showAllSites;
+      if (lastActivity) renderActivity(lastActivity);
+    });
+    dayPrev.addEventListener("click", () => {
+      if (activityDate) loadActivity(shiftDate(activityDate, -1)).catch((err) => flash("err", err.message));
+    });
+    dayNext.addEventListener("click", () => {
+      if (activityDate) loadActivity(shiftDate(activityDate, 1)).catch((err) => flash("err", err.message));
+    });
+    dayToday.addEventListener("click", () => {
+      loadActivity(activityToday || undefined).catch((err) => flash("err", err.message));
+    });
+    dayPicker.addEventListener("change", () => {
+      if (dayPicker.value) loadActivity(dayPicker.value).catch((err) => flash("err", err.message));
+    });
+
+    function shiftDate(value, days) {
+      const parts = value.split("-").map(Number);
+      const stamp = new Date(parts[0], parts[1] - 1, parts[2]);
+      stamp.setDate(stamp.getDate() + days);
+      const y = stamp.getFullYear();
+      const m = String(stamp.getMonth() + 1).padStart(2, "0");
+      const d = String(stamp.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
 
     document.getElementById("lock").addEventListener("click", async () => {
       await api("/api/logout", { method: "POST", body: {} });
@@ -545,6 +1620,7 @@
         });
         renderGrants(payload);
         flash("ok", "Granted extra time. The kid page will show it after the next refresh.");
+        if (activityDate) loadActivity(activityDate).catch((err) => flash("err", err.message));
       } catch (err) {
         flash("err", err.message);
       }
@@ -569,7 +1645,11 @@
         const session = await api("/api/parent/session");
         if (session.unlocked) {
           showApp();
-          await loadWorkspace();
+          try {
+            await Promise.all([loadWorkspace(), loadActivity()]);
+          } catch (err) {
+            flash("err", err.message);
+          }
         } else {
           showGate(session);
         }

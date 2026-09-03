@@ -14,9 +14,9 @@ import logging
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlparse
 
-from . import parent_auth, parent_page
+from . import parent_activity, parent_auth, parent_page
 from .config import load_config, save_config
 from .grants import clear_grant, grant_from_config, grant_rows
 from .parent_editor import apply_editor, editor_from_config
@@ -152,6 +152,12 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             if method == "POST" and path == "/api/logout":
                 self._send_json(200, {"ok": True, "has_pin": parent_auth.has_pin(app_dir), "unlocked": False}, set_cookie=parent_auth.cookie_header(clear=True))
+                return
+            if method == "GET" and path == "/api/parent/activity":
+                if not self._require_parent():
+                    return
+                date = (parse_qs(urlparse(self.path).query).get("date") or [None])[0]
+                self._send_json(200, parent_activity.day_report(app_dir, date=date))
                 return
             if method == "GET" and path == "/api/rules":
                 if not self._require_parent():
