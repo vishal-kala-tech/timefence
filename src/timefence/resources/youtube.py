@@ -19,6 +19,7 @@ from urllib.request import Request, urlopen
 
 from ..browsers import close_matching_tabs, read_matching_tab, url_matches as _url_matches
 from ..browsers.macos.applescript import PLAYBACK_JS, applescript_string
+from ..identity import YOUTUBE_SHORTS_RESOURCE_ID, YOUTUBE_VIDEOS_RESOURCE_ID, classify_youtube
 from ..browsers.macos.chrome import close_script as chrome_close_script
 from ..browsers.macos.chrome import inspect_script as chrome_inspect_script
 from ..browsers.matching import DEFAULT_URL_CONTAINS
@@ -97,16 +98,22 @@ def parse_video(url, title="", channel=""):
     if not VIDEO_ID_RE.fullmatch(video_id):
         return None
 
-    if kind == "shorts":
+    category = classify_youtube(url)
+    if category == YOUTUBE_SHORTS_RESOURCE_ID:
         canonical = f"https://www.youtube.com/shorts/{video_id}"
     else:
         canonical = f"https://www.youtube.com/watch?v={video_id}"
+        category = category or YOUTUBE_VIDEOS_RESOURCE_ID
 
     return {
         "id": video_id,
+        "video_id": video_id,
         "title": clean_title(title),
         "channel": clean_channel(channel),
         "url": canonical,
+        "resource_type": "video_category",
+        "resource_id": category,
+        "platform": "youtube",
     }
 
 

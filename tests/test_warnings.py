@@ -1,7 +1,10 @@
 from datetime import datetime
 
 from timefence.policy import due_warnings, warning_dialog_message
+from timefence.identity import RESOURCE_TYPE_APP
 from timefence.usage import add_usage, load_state, mark_warning_sent
+
+ROBLOX = "com.roblox.RobloxPlayer"
 
 DAILY = {
     "daily_limit_minutes": 45,
@@ -67,11 +70,11 @@ def test_same_warning_does_not_fire_twice():
 
 def test_warning_state_survives_reload(tmp_path):
     when = datetime(2024, 1, 15, 16, 30)
-    add_usage(tmp_path, "roblox", 40 * 60, window_id="after_school", now=when)
-    warning = due_warnings(DAILY, load_state(tmp_path, "roblox", now=when), label="Roblox")[1]
+    add_usage(tmp_path, RESOURCE_TYPE_APP, ROBLOX, 40 * 60, window_id="after_school", now=when)
+    warning = due_warnings(DAILY, load_state(tmp_path, RESOURCE_TYPE_APP, ROBLOX, now=when), label="Roblox")[1]
     assert warning.persist_key == "daily:5"
-    mark_warning_sent(tmp_path, "roblox", warning, now=when)
-    reloaded = load_state(tmp_path, "roblox", now=when)
+    mark_warning_sent(tmp_path, RESOURCE_TYPE_APP, ROBLOX, warning, now=when)
+    reloaded = load_state(tmp_path, RESOURCE_TYPE_APP, ROBLOX, now=when)
     assert reloaded["warnings_sent"] == ["daily:5"]
     assert keys(due_warnings(DAILY, reloaded)) == ["daily:10"]
 
@@ -135,9 +138,9 @@ def test_new_day_resets_warning_state(tmp_path):
     yesterday = datetime(2024, 1, 15, 16, 30)
     today = datetime(2024, 1, 16, 16, 30)
     warning = due_warnings(DAILY, {"total_usage_seconds": 40 * 60, "warnings_sent": []})[1]
-    mark_warning_sent(tmp_path, "roblox", warning, now=yesterday)
-    add_usage(tmp_path, "roblox", 15, window_id="after_school", now=today)
-    state = load_state(tmp_path, "roblox", now=today)
+    mark_warning_sent(tmp_path, RESOURCE_TYPE_APP, ROBLOX, warning, now=yesterday)
+    add_usage(tmp_path, RESOURCE_TYPE_APP, ROBLOX, 15, window_id="after_school", now=today)
+    state = load_state(tmp_path, RESOURCE_TYPE_APP, ROBLOX, now=today)
     assert state["warnings_sent"] == []
     assert state["windows"]["after_school"]["warnings_sent"] == []
 

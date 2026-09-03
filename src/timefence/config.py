@@ -13,6 +13,16 @@ import json
 import re
 from pathlib import Path
 
+from .identity import (
+    RESOURCE_TYPE_APP,
+    RESOURCE_TYPE_VIDEO_CATEGORY,
+    RESOURCE_TYPE_WEBSITE,
+    YOUTUBE_SHORTS_RESOURCE_ID,
+    YOUTUBE_VIDEOS_RESOURCE_ID,
+    listed_resources,
+    resource_id_of,
+    resource_type_of,
+)
 from .policy import DAY_NAMES, parse_hhmm
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -101,34 +111,41 @@ def validate_day_policy(policy, field):
         seen.add(window_id)
 
 
-def validate_resource(name, resource):
-    if not isinstance(name, str) or not name.strip():
-        raise ValueError("Resource name must be a non-empty string")
+def validate_resource(resource, field="resource"):
     if not isinstance(resource, dict):
-        raise ValueError(f"Resource {name!r} must be an object")
+        raise ValueError(f"{field} must be an object")
+
+    resource_type = resource.get("resource_type")
+    if resource_type not in (RESOURCE_TYPE_APP, RESOURCE_TYPE_WEBSITE, RESOURCE_TYPE_VIDEO_CATEGORY):
+        raise ValueError(f"{field} resource_type must be app, website, or video_category")
+
+    resource_id = resource.get("resource_id")
+    if not isinstance(resource_id, str) or not resource_id.strip():
+        raise ValueError(f"{field} resource_id must be a non-empty string")
+    if resource_type == RESOURCE_TYPE_VIDEO_CATEGORY and resource_id not in (
+        YOUTUBE_VIDEOS_RESOURCE_ID,
+        YOUTUBE_SHORTS_RESOURCE_ID,
+    ):
+        raise ValueError(f"{field} resource_id must be youtube_videos or youtube_shorts")
 
     display_name = resource.get("display_name")
     if display_name is not None and (not isinstance(display_name, str) or not display_name.strip()):
-        raise ValueError(f"Resource {name!r} display_name must be a non-empty string")
+        raise ValueError(f"{field} display_name must be a non-empty string")
 
-    resource_type = resource.get("type")
-    if resource_type is not None and (not isinstance(resource_type, str) or not resource_type.strip()):
-        raise ValueError(f"Resource {name!r} type must be a non-empty string")
-
-    for field in ("url_contains", "url_excludes", "bundle_ids", "executables"):
-        values = resource.get(field)
+    for extra in ("url_contains", "url_excludes", "match_ids", "bundle_ids", "executables"):
+        values = resource.get(extra)
         if values is None:
             continue
         if not isinstance(values, list) or not all(isinstance(item, str) and item for item in values):
-            raise ValueError(f"Resource {name!r} {field} must be an array of non-empty strings")
+            raise ValueError(f"{field} {extra} must be an array of non-empty strings")
 
-    _validate_app_ids(resource.get("app_ids"), f"Resource {name!r} app_ids")
-    _validate_browser_field(resource.get("browser"), f"Resource {name!r} browser")
-    _validate_browser_field(resource.get("browsers"), f"Resource {name!r} browsers")
+    _validate_app_ids(resource.get("app_ids"), f"{field} app_ids")
+    _validate_browser_field(resource.get("browser"), f"{field} browser")
+    _validate_browser_field(resource.get("browsers"), f"{field} browsers")
 
     policy = resource.get("policy")
     if not isinstance(policy, dict):
-        raise ValueError(f"Resource {name!r} is missing a policy object")
+        raise ValueError(f"{field} is missing a policy object")
 
     day_policies = []
     if "default" in policy:
@@ -141,26 +158,26 @@ def validate_resource(name, resource):
     days = policy.get("days")
     if days is not None:
         if not isinstance(days, dict):
-            raise ValueError(f"Resource {name!r} policy.days must be an object")
+            raise ValueError(f"{field} policy.days must be an object")
         for day_name, day_policy in days.items():
             if day_name not in DAY_NAMES:
-                raise ValueError(f"Resource {name!r} has unknown day {day_name!r}")
+                raise ValueError(f"{field} has unknown day {day_name!r}")
             day_policies.append((f"days.{day_name}", day_policy))
 
     date_overrides = policy.get("date_overrides")
     if date_overrides is not None:
         if not isinstance(date_overrides, dict):
-            raise ValueError(f"Resource {name!r} policy.date_overrides must be an object")
+            raise ValueError(f"{field} policy.date_overrides must be an object")
         for date_key, day_policy in date_overrides.items():
             if not isinstance(date_key, str) or not DATE_RE.match(date_key):
-                raise ValueError(f"Resource {name!r} has invalid date override {date_key!r}")
+                raise ValueError(f"{field} has invalid date override {date_key!r}")
             day_policies.append((f"date_overrides.{date_key}", day_policy))
 
     if not day_policies:
-        raise ValueError(f"Resource {name!r} has no default, day, or weekday policy")
+        raise ValueError(f"{field} has no default, day, or weekday policy")
 
     for label, day_policy in day_policies:
-        validate_day_policy(day_policy, f"resources.{name}.policy.{label}")
+        validate_day_policy(day_policy, f"{field}.policy.{label}")
 
 
 def validate_config(cfg):
@@ -171,7 +188,7 @@ def validate_config(cfg):
         raise ValueError("Unsupported or invalid config")
 
     resources = cfg.get("resources")
-    if not isinstance(resources, dict):
+    if not isinstance(resources, list):
         raise ValueError("Unsupported or invalid config")
 
     interval = cfg.get("check_interval_seconds", 15)
@@ -193,8 +210,14 @@ def validate_config(cfg):
     _validate_browser_field(cfg.get("browser"), "browser")
     _validate_browser_field(cfg.get("browsers"), "browsers")
 
-    for name, resource in resources.items():
-        validate_resource(name, resource)
+    seen = set()
+    for index, resource in enumerate(resources):
+        field = f"resources[{index}]"
+        validate_resource(resource, field)
+        key = (resource_type_of(resource), resource_id_of(resource).lower())
+        if key in seen:
+            raise ValueError(f"{field} duplicates {key[0]}/{key[1]}")
+        seen.add(key)
 
     return cfg
 

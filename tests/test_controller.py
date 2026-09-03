@@ -5,6 +5,12 @@ import pytest
 
 from timefence import controller
 from timefence.grants import apply_grant
+from timefence.identity import (
+    RESOURCE_TYPE_APP,
+    RESOURCE_TYPE_VIDEO_CATEGORY,
+    YOUTUBE_SHORTS_RESOURCE_ID,
+    YOUTUBE_VIDEOS_RESOURCE_ID,
+)
 from timefence.policy import resolve_policy
 from timefence.usage import add_usage, get_usage, load_state
 from tests.helpers import (
@@ -18,6 +24,10 @@ from tests.helpers import (
 MONDAY_AFTERNOON = datetime(2024, 1, 15, 16, 30)
 MONDAY_EVENING = datetime(2024, 1, 15, 19, 15)
 SATURDAY_MORNING = datetime(2024, 1, 20, 10, 0)
+APP = RESOURCE_TYPE_APP
+VIDEO = RESOURCE_TYPE_VIDEO_CATEGORY
+ROBLOX = "com.roblox.RobloxPlayer"
+YOUTUBE = YOUTUBE_VIDEOS_RESOURCE_ID
 
 
 class LoopStop(BaseException):
@@ -26,6 +36,23 @@ class LoopStop(BaseException):
 
 def freeze_now(monkeypatch, when):
     monkeypatch.setattr(controller, "_now", lambda: when)
+
+
+def roblox_resource(**kwargs):
+    kwargs.setdefault("resource_type", APP)
+    kwargs.setdefault("resource_id", ROBLOX)
+    kwargs.setdefault("display_name", "Roblox")
+    kwargs.setdefault("module", "roblox")
+    kwargs.setdefault("match_ids", [ROBLOX, "com.roblox.Roblox"])
+    return make_resource(**kwargs)
+
+
+def youtube_resource(**kwargs):
+    kwargs.setdefault("resource_type", VIDEO)
+    kwargs.setdefault("resource_id", YOUTUBE)
+    kwargs.setdefault("display_name", "YouTube")
+    kwargs.setdefault("module", "youtube")
+    return make_resource(**kwargs)
 
 
 @pytest.fixture(autouse=True)
@@ -91,11 +118,11 @@ def test_skips_disabled_and_unknown_resources(app_dir, monkeypatch):
     write_rules(
         app_dir,
         make_config(
-            resources={
-                "roblox": make_resource(enabled=False),
-                "youtube": make_resource(enabled=True),
-                "netflix": make_resource(enabled=True),
-            }
+            resources=[
+                roblox_resource(enabled=False),
+                youtube_resource(enabled=True),
+                make_resource(enabled=True, resource_id="netflix.Netflix", display_name="Netflix"),
+            ]
         ),
     )
 
@@ -105,9 +132,9 @@ def test_skips_disabled_and_unknown_resources(app_dir, monkeypatch):
     modules["roblox"].enforce.assert_not_called()
     modules["youtube"].is_active.assert_called_once()
     modules["youtube"].enforce.assert_not_called()
-    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 0
-    assert get_usage(app_dir / "state", "youtube", now=MONDAY_AFTERNOON) == 15
-    assert get_usage(app_dir / "state", "youtube", window_id="all_day", now=MONDAY_AFTERNOON) == 15
+    assert get_usage(app_dir / "state", APP, ROBLOX, now=MONDAY_AFTERNOON) == 0
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON) == 15
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, window_id="all_day", now=MONDAY_AFTERNOON) == 15
 
 
 def test_tracks_aliased_resource_via_module_field(app_dir, monkeypatch):
@@ -116,16 +143,16 @@ def test_tracks_aliased_resource_via_module_field(app_dir, monkeypatch):
     write_rules(
         app_dir,
         make_config(
-            resources={
-                "youtube_shorts": make_resource(enabled=True, module="youtube"),
-            }
+            resources=[
+                youtube_resource(enabled=True, resource_id=YOUTUBE_SHORTS_RESOURCE_ID, module="youtube"),
+            ]
         ),
     )
 
     run_cycles(app_dir, monkeypatch)
 
     modules["youtube"].is_active.assert_called_once()
-    assert get_usage(app_dir / "state", "youtube_shorts", now=MONDAY_AFTERNOON) == 15
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE_SHORTS_RESOURCE_ID, now=MONDAY_AFTERNOON) == 15
 
 
 def test_records_youtube_watch_history_in_sequence(app_dir, monkeypatch, caplog):
@@ -174,23 +201,23 @@ def test_records_youtube_watch_history_in_sequence(app_dir, monkeypatch, caplog)
     mod = MagicMock()
     mod.inspect.side_effect = pages
     monkeypatch.setattr(controller, "MODULES", {"youtube": mod})
-    write_rules(app_dir, make_config(resources={"youtube": make_resource(enabled=True)}))
+    write_rules(app_dir, make_config(resources=[youtube_resource(enabled=True)]))
 
     import logging
 
     caplog.set_level(logging.INFO)
     run_cycles(app_dir, monkeypatch, cycles=4)
 
-    state = load_state(app_dir / "state", "youtube", now=MONDAY_AFTERNOON)
+    state = load_state(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON)
     assert [item["id"] for item in state["videos"]] == ["aaaaaaaaaaa", "bbbbbbbbbbb", "aaaaaaaaaaa"]
     assert state["videos"][0]["usage_seconds"] == 30
     assert state["videos"][1]["usage_seconds"] == 15
     assert state["videos"][2]["usage_seconds"] == 15
-    watched = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Watched youtube:")]
+    watched = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Watched ")]
     assert watched == [
-        "Watched youtube: aaaaaaaaaaa First (Channel A)",
-        "Watched youtube: bbbbbbbbbbb Second",
-        "Watched youtube: aaaaaaaaaaa First (Channel A)",
+        "Watched youtube_videos: aaaaaaaaaaa First (Channel A)",
+        "Watched youtube_videos: bbbbbbbbbbb Second",
+        "Watched youtube_videos: aaaaaaaaaaa First (Channel A)",
     ]
     mod.is_active.assert_not_called()
 
@@ -203,15 +230,13 @@ def test_blocked_youtube_still_records_video(app_dir, monkeypatch):
     monkeypatch.setattr(controller, "MODULES", {"youtube": mod})
     write_rules(
         app_dir,
-        make_config(
-            resources={"youtube": make_resource(default=make_day_policy(allowed_windows=[]))}
-        ),
+        make_config(resources=[youtube_resource(default=make_day_policy(allowed_windows=[]))]),
     )
 
     run_cycles(app_dir, monkeypatch)
 
     mod.enforce.assert_called_once()
-    state = load_state(app_dir / "state", "youtube", now=MONDAY_AFTERNOON)
+    state = load_state(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON)
     assert state["total_usage_seconds"] == 0
     assert [item["id"] for item in state["videos"]] == ["abc123defgh"]
     assert state["videos"][0]["usage_seconds"] == 0
@@ -232,13 +257,13 @@ def test_paused_youtube_does_not_count_usage(app_dir, monkeypatch):
         "video": video,
     }
     monkeypatch.setattr(controller, "MODULES", {"youtube": mod})
-    write_rules(app_dir, make_config(resources={"youtube": make_resource(enabled=True)}))
+    write_rules(app_dir, make_config(resources=[youtube_resource(enabled=True)]))
 
     run_cycles(app_dir, monkeypatch)
 
     mod.enforce.assert_not_called()
-    assert get_usage(app_dir / "state", "youtube", now=MONDAY_AFTERNOON) == 0
-    assert load_state(app_dir / "state", "youtube", now=MONDAY_AFTERNOON)["videos"] == []
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON) == 0
+    assert load_state(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON)["videos"] == []
 
 
 def test_paused_youtube_still_blocks_when_not_allowed(app_dir, monkeypatch):
@@ -254,15 +279,13 @@ def test_paused_youtube_still_blocks_when_not_allowed(app_dir, monkeypatch):
     monkeypatch.setattr(controller, "MODULES", {"youtube": mod})
     write_rules(
         app_dir,
-        make_config(
-            resources={"youtube": make_resource(default=make_day_policy(allowed_windows=[]))}
-        ),
+        make_config(resources=[youtube_resource(default=make_day_policy(allowed_windows=[]))]),
     )
 
     run_cycles(app_dir, monkeypatch)
 
     mod.enforce.assert_called_once()
-    assert get_usage(app_dir / "state", "youtube", now=MONDAY_AFTERNOON) == 0
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON) == 0
 
 
 def test_background_roblox_does_not_count_usage(app_dir, monkeypatch):
@@ -270,12 +293,12 @@ def test_background_roblox_does_not_count_usage(app_dir, monkeypatch):
     mod = MagicMock()
     mod.inspect.return_value = {"foreground": False}
     monkeypatch.setattr(controller, "MODULES", {"roblox": mod})
-    write_rules(app_dir, make_config(resources={"roblox": make_resource(enabled=True)}))
+    write_rules(app_dir, make_config(resources=[roblox_resource(enabled=True)]))
 
     run_cycles(app_dir, monkeypatch)
 
     mod.enforce.assert_not_called()
-    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 0
+    assert get_usage(app_dir / "state", APP, ROBLOX, now=MONDAY_AFTERNOON) == 0
 
 
 def test_background_roblox_still_blocks_when_not_allowed(app_dir, monkeypatch):
@@ -285,61 +308,57 @@ def test_background_roblox_still_blocks_when_not_allowed(app_dir, monkeypatch):
     monkeypatch.setattr(controller, "MODULES", {"roblox": mod})
     write_rules(
         app_dir,
-        make_config(
-            resources={"roblox": make_resource(default=make_day_policy(allowed_windows=[]))}
-        ),
+        make_config(resources=[roblox_resource(default=make_day_policy(allowed_windows=[]))]),
     )
 
     run_cycles(app_dir, monkeypatch)
 
     mod.enforce.assert_called_once()
-    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 0
+    assert get_usage(app_dir / "state", APP, ROBLOX, now=MONDAY_AFTERNOON) == 0
 
 
 def test_inactive_resource_is_not_counted_or_blocked(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
-    modules = install_modules(monkeypatch, roblox=False)
-    write_rules(app_dir, make_config())
+    modules = install_modules(monkeypatch, youtube=False)
+    write_rules(app_dir, make_config(resources=[youtube_resource()]))
 
     run_cycles(app_dir, monkeypatch)
 
-    modules["roblox"].enforce.assert_not_called()
-    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 0
+    modules["youtube"].enforce.assert_not_called()
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON) == 0
 
 
 def test_active_in_window_under_limit_records_usage(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
-    modules = install_modules(monkeypatch, roblox=True)
+    modules = install_modules(monkeypatch, youtube=True)
     write_rules(
         app_dir,
         make_config(
             check_interval_seconds=20,
-            resources={"roblox": make_resource(default=make_day_policy(daily_limit_minutes=30))},
+            resources=[youtube_resource(default=make_day_policy(daily_limit_minutes=30))],
         ),
     )
 
     slept = run_cycles(app_dir, monkeypatch)
 
-    modules["roblox"].enforce.assert_not_called()
-    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 20
-    assert get_usage(app_dir / "state", "roblox", window_id="all_day", now=MONDAY_AFTERNOON) == 20
+    modules["youtube"].enforce.assert_not_called()
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON) == 20
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, window_id="all_day", now=MONDAY_AFTERNOON) == 20
     assert slept == [20]
 
 
 def test_active_outside_window_is_blocked_without_usage(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
-    modules = install_modules(monkeypatch, roblox=True)
+    modules = install_modules(monkeypatch, youtube=True)
     write_rules(
         app_dir,
-        make_config(
-            resources={"roblox": make_resource(default=make_day_policy(allowed_windows=[]))}
-        ),
+        make_config(resources=[youtube_resource(default=make_day_policy(allowed_windows=[]))]),
     )
 
     run_cycles(app_dir, monkeypatch)
 
-    modules["roblox"].enforce.assert_called_once()
-    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 0
+    modules["youtube"].enforce.assert_called_once()
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON) == 0
 
 
 def test_block_shows_countdown_then_enforces(app_dir, monkeypatch):
@@ -351,17 +370,17 @@ def test_block_shows_countdown_then_enforces(app_dir, monkeypatch):
         return True
 
     monkeypatch.setattr(controller, "show_block_countdown", countdown)
-    modules = install_modules(monkeypatch, roblox=True)
-    modules["roblox"].enforce.side_effect = lambda _resource: order.append("enforce")
+    modules = install_modules(monkeypatch, youtube=True)
+    modules["youtube"].enforce.side_effect = lambda _resource: order.append("enforce")
     write_rules(
         app_dir,
         make_config(
-            resources={
-                "roblox": make_resource(
-                    display_name="Roblox",
+            resources=[
+                youtube_resource(
+                    display_name="YouTube",
                     default=make_day_policy(allowed_windows=[]),
                 )
-            }
+            ]
         ),
     )
 
@@ -370,7 +389,7 @@ def test_block_shows_countdown_then_enforces(app_dir, monkeypatch):
     assert order[0] == (
         "countdown",
         "TimeFence",
-        "Roblox is not allowed right now.",
+        "YouTube is not allowed right now.",
     )
     assert order[1] == "enforce"
 
@@ -382,43 +401,42 @@ def test_block_still_enforces_if_countdown_fails(app_dir, monkeypatch):
         "show_block_countdown",
         MagicMock(side_effect=RuntimeError("osascript failed")),
     )
-    modules = install_modules(monkeypatch, roblox=True)
+    modules = install_modules(monkeypatch, youtube=True)
     write_rules(
         app_dir,
-        make_config(resources={"roblox": make_resource(default=make_day_policy(allowed_windows=[]))}),
+        make_config(resources=[youtube_resource(default=make_day_policy(allowed_windows=[]))]),
     )
 
     run_cycles(app_dir, monkeypatch)
 
-    modules["roblox"].enforce.assert_called_once()
+    modules["youtube"].enforce.assert_called_once()
 
 
 def test_active_at_daily_limit_is_blocked(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
-    modules = install_modules(monkeypatch, roblox=True)
+    modules = install_modules(monkeypatch, youtube=True)
     write_rules(
         app_dir,
-        make_config(
-            resources={"roblox": make_resource(default=make_day_policy(daily_limit_minutes=1))}
-        ),
+        make_config(resources=[youtube_resource(default=make_day_policy(daily_limit_minutes=1))]),
     )
-    add_usage(app_dir / "state", "roblox", 60, window_id="all_day", now=MONDAY_AFTERNOON)
+    add_usage(app_dir / "state", VIDEO, YOUTUBE, 60, window_id="all_day", now=MONDAY_AFTERNOON)
 
     run_cycles(app_dir, monkeypatch)
 
-    modules["roblox"].enforce.assert_called_once()
-    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 60
+    modules["youtube"].enforce.assert_called_once()
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON) == 60
 
 
 def test_grant_allows_over_daily_limit(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
-    modules = install_modules(monkeypatch, roblox=True)
-    resource = make_resource(default=make_day_policy(daily_limit_minutes=1))
-    write_rules(app_dir, make_config(resources={"roblox": resource}))
-    add_usage(app_dir / "state", "roblox", 60, window_id="all_day", now=MONDAY_AFTERNOON)
+    modules = install_modules(monkeypatch, youtube=True)
+    resource = youtube_resource(default=make_day_policy(daily_limit_minutes=1))
+    write_rules(app_dir, make_config(resources=[resource]))
+    add_usage(app_dir / "state", VIDEO, YOUTUBE, 60, window_id="all_day", now=MONDAY_AFTERNOON)
     apply_grant(
         app_dir / "state",
-        "roblox",
+        VIDEO,
+        YOUTUBE,
         resolve_policy(resource, now=MONDAY_AFTERNOON),
         15,
         now=MONDAY_AFTERNOON,
@@ -426,46 +444,44 @@ def test_grant_allows_over_daily_limit(app_dir, monkeypatch):
 
     run_cycles(app_dir, monkeypatch)
 
-    modules["roblox"].enforce.assert_not_called()
-    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 75
+    modules["youtube"].enforce.assert_not_called()
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON) == 75
 
 
 def test_zero_daily_limit_means_no_cap(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
-    modules = install_modules(monkeypatch, roblox=True)
+    modules = install_modules(monkeypatch, youtube=True)
     write_rules(
         app_dir,
-        make_config(
-            resources={"roblox": make_resource(default=make_day_policy(daily_limit_minutes=0))}
-        ),
+        make_config(resources=[youtube_resource(default=make_day_policy(daily_limit_minutes=0))]),
     )
-    add_usage(app_dir / "state", "roblox", 10_000, window_id="all_day", now=MONDAY_AFTERNOON)
+    add_usage(app_dir / "state", VIDEO, YOUTUBE, 10_000, window_id="all_day", now=MONDAY_AFTERNOON)
 
     run_cycles(app_dir, monkeypatch)
 
-    modules["roblox"].enforce.assert_not_called()
-    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 10_015
+    modules["youtube"].enforce.assert_not_called()
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON) == 10_015
 
 
 def test_weekend_day_policy_is_selected(app_dir, monkeypatch):
     freeze_now(monkeypatch, SATURDAY_MORNING)
-    modules = install_modules(monkeypatch, roblox=True)
+    modules = install_modules(monkeypatch, youtube=True)
     write_rules(
         app_dir,
         make_config(
-            resources={
-                "roblox": make_resource(
+            resources=[
+                youtube_resource(
                     default=make_day_policy(allowed_windows=[]),
                     days={"saturday": make_day_policy(daily_limit_minutes=90)},
                 )
-            }
+            ]
         ),
     )
 
     run_cycles(app_dir, monkeypatch)
 
-    modules["roblox"].enforce.assert_not_called()
-    assert get_usage(app_dir / "state", "roblox", now=SATURDAY_MORNING) == 15
+    modules["youtube"].enforce.assert_not_called()
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=SATURDAY_MORNING) == 15
 
 
 def test_window_limit_does_not_consume_later_window(app_dir, monkeypatch):
@@ -473,22 +489,22 @@ def test_window_limit_does_not_consume_later_window(app_dir, monkeypatch):
         make_window("after_school", "16:00", "18:00", limit_minutes=1),
         make_window("evening", "19:00", "20:30", limit_minutes=1),
     ]
-    resource = make_resource(default=make_day_policy(daily_limit_minutes=45, allowed_windows=windows))
-    write_rules(app_dir, make_config(resources={"roblox": resource}))
-    add_usage(app_dir / "state", "roblox", 60, window_id="after_school", now=MONDAY_AFTERNOON)
+    resource = youtube_resource(default=make_day_policy(daily_limit_minutes=45, allowed_windows=windows))
+    write_rules(app_dir, make_config(resources=[resource]))
+    add_usage(app_dir / "state", VIDEO, YOUTUBE, 60, window_id="after_school", now=MONDAY_AFTERNOON)
 
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
-    afternoon = install_modules(monkeypatch, roblox=True)
+    afternoon = install_modules(monkeypatch, youtube=True)
     run_cycles(app_dir, monkeypatch)
-    afternoon["roblox"].enforce.assert_called_once()
-    assert get_usage(app_dir / "state", "roblox", window_id="evening", now=MONDAY_AFTERNOON) == 0
+    afternoon["youtube"].enforce.assert_called_once()
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, window_id="evening", now=MONDAY_AFTERNOON) == 0
 
     freeze_now(monkeypatch, MONDAY_EVENING)
-    evening = install_modules(monkeypatch, roblox=True)
+    evening = install_modules(monkeypatch, youtube=True)
     run_cycles(app_dir, monkeypatch)
-    evening["roblox"].enforce.assert_not_called()
-    assert get_usage(app_dir / "state", "roblox", window_id="evening", now=MONDAY_EVENING) == 15
-    assert get_usage(app_dir / "state", "roblox", now=MONDAY_EVENING) == 75
+    evening["youtube"].enforce.assert_not_called()
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, window_id="evening", now=MONDAY_EVENING) == 15
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_EVENING) == 75
 
 
 def test_daily_limit_blocks_even_when_later_window_has_budget(app_dir, monkeypatch):
@@ -499,27 +515,25 @@ def test_daily_limit_blocks_even_when_later_window_has_budget(app_dir, monkeypat
     write_rules(
         app_dir,
         make_config(
-            resources={
-                "roblox": make_resource(
-                    default=make_day_policy(daily_limit_minutes=1, allowed_windows=windows)
-                )
-            }
+            resources=[
+                youtube_resource(default=make_day_policy(daily_limit_minutes=1, allowed_windows=windows))
+            ]
         ),
     )
-    add_usage(app_dir / "state", "roblox", 60, window_id="after_school", now=MONDAY_EVENING)
+    add_usage(app_dir / "state", VIDEO, YOUTUBE, 60, window_id="after_school", now=MONDAY_EVENING)
     freeze_now(monkeypatch, MONDAY_EVENING)
-    modules = install_modules(monkeypatch, roblox=True)
+    modules = install_modules(monkeypatch, youtube=True)
 
     run_cycles(app_dir, monkeypatch)
 
-    modules["roblox"].enforce.assert_called_once()
-    assert get_usage(app_dir / "state", "roblox", window_id="evening", now=MONDAY_EVENING) == 0
+    modules["youtube"].enforce.assert_called_once()
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, window_id="evening", now=MONDAY_EVENING) == 0
 
 
 def test_revision_change_is_logged_once(app_dir, monkeypatch, caplog):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
-    install_modules(monkeypatch, roblox=False)
-    write_rules(app_dir, make_config(revision=4))
+    install_modules(monkeypatch, youtube=False)
+    write_rules(app_dir, make_config(revision=4, resources=[youtube_resource()]))
 
     import logging
 
@@ -532,8 +546,8 @@ def test_revision_change_is_logged_once(app_dir, monkeypatch, caplog):
 
 def test_invalid_config_keeps_last_valid(app_dir, monkeypatch, caplog):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
-    modules = install_modules(monkeypatch, roblox=True)
-    good = make_config(check_interval_seconds=9)
+    modules = install_modules(monkeypatch, youtube=True)
+    good = make_config(check_interval_seconds=9, resources=[youtube_resource()])
     calls = {"n": 0}
 
     def flaky_load(_path):
@@ -549,14 +563,14 @@ def test_invalid_config_keeps_last_valid(app_dir, monkeypatch, caplog):
     slept = run_cycles(app_dir, monkeypatch, cycles=2)
 
     assert slept == [9, 9]
-    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 18
-    modules["roblox"].enforce.assert_not_called()
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON) == 18
+    modules["youtube"].enforce.assert_not_called()
     assert any("Invalid config; keeping last valid configuration" in r.getMessage() for r in caplog.records)
 
 
 def test_cycle_failure_uses_default_interval_then_continues(app_dir, monkeypatch, caplog):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
-    install_modules(monkeypatch, roblox=False)
+    install_modules(monkeypatch, youtube=False)
 
     calls = {"n": 0}
 
@@ -564,7 +578,7 @@ def test_cycle_failure_uses_default_interval_then_continues(app_dir, monkeypatch
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("boom")
-        return make_config(check_interval_seconds=9)
+        return make_config(check_interval_seconds=9, resources=[youtube_resource()])
 
     monkeypatch.setattr(controller, "load_config", flaky_load)
     import logging
@@ -583,43 +597,43 @@ def test_one_resource_failure_does_not_skip_remaining_resources(app_dir, monkeyp
     write_rules(
         app_dir,
         make_config(
-            resources={
-                "roblox": make_resource(),
-                "youtube": make_resource(),
-            }
+            resources=[
+                roblox_resource(),
+                youtube_resource(),
+            ]
         ),
     )
 
     run_cycles(app_dir, monkeypatch)
 
     modules["youtube"].is_active.assert_called_once()
-    assert get_usage(app_dir / "state", "youtube", now=MONDAY_AFTERNOON) == 15
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON) == 15
 
 
 def test_daily_warning_fires_once_when_threshold_crossed(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
     notify = MagicMock(return_value=True)
     monkeypatch.setattr(controller, "show_notification", notify)
-    install_modules(monkeypatch, roblox=True)
+    install_modules(monkeypatch, youtube=True)
     write_rules(
         app_dir,
         make_config(
-            resources={
-                "roblox": make_resource(
-                    display_name="Roblox",
+            resources=[
+                youtube_resource(
+                    display_name="YouTube",
                     default=make_day_policy(daily_limit_minutes=45, warning_minutes=[10, 5, 1]),
                 )
-            }
+            ]
         ),
     )
-    add_usage(app_dir / "state", "roblox", 45 * 60 - 10 * 60 - 8, window_id="all_day", now=MONDAY_AFTERNOON)
+    add_usage(app_dir / "state", VIDEO, YOUTUBE, 45 * 60 - 10 * 60 - 8, window_id="all_day", now=MONDAY_AFTERNOON)
 
     run_cycles(app_dir, monkeypatch, cycles=2)
 
     messages = [call.args[1] for call in notify.call_args_list]
-    assert messages == ["Roblox has 10 minutes remaining today."]
+    assert messages == ["YouTube has 10 minutes remaining today."]
     assert notify.call_args.args[0] == "TimeFence"
-    state = load_state(app_dir / "state", "roblox", now=MONDAY_AFTERNOON)
+    state = load_state(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON)
     assert state["warnings_sent"] == ["daily:10"]
 
 
@@ -627,13 +641,13 @@ def test_daily_and_window_warning_share_one_dialog(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
     notify = MagicMock(return_value=True)
     monkeypatch.setattr(controller, "show_notification", notify)
-    install_modules(monkeypatch, roblox=True)
+    install_modules(monkeypatch, youtube=True)
     write_rules(
         app_dir,
         make_config(
-            resources={
-                "roblox": make_resource(
-                    display_name="Roblox",
+            resources=[
+                youtube_resource(
+                    display_name="YouTube",
                     default=make_day_policy(
                         daily_limit_minutes=3,
                         warning_minutes=[2, 1],
@@ -648,18 +662,18 @@ def test_daily_and_window_warning_share_one_dialog(app_dir, monkeypatch):
                         ],
                     ),
                 )
-            }
+            ]
         ),
     )
-    add_usage(app_dir / "state", "roblox", 60, window_id="evening", now=MONDAY_AFTERNOON)
+    add_usage(app_dir / "state", VIDEO, YOUTUBE, 60, window_id="evening", now=MONDAY_AFTERNOON)
 
     run_cycles(app_dir, monkeypatch)
 
     assert notify.call_count == 1
     assert notify.call_args.args[1] == (
-        "Roblox has 2 minutes remaining today, including the evening window."
+        "YouTube has 2 minutes remaining today, including the evening window."
     )
-    state = load_state(app_dir / "state", "roblox", now=MONDAY_AFTERNOON)
+    state = load_state(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON)
     assert "daily:2" in state["warnings_sent"]
     assert "2" in state["windows"]["evening"]["warnings_sent"]
 
@@ -667,51 +681,51 @@ def test_daily_and_window_warning_share_one_dialog(app_dir, monkeypatch):
 def test_notification_failure_does_not_affect_enforcement(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
     monkeypatch.setattr(controller, "show_notification", MagicMock(side_effect=RuntimeError("osascript failed")))
-    modules = install_modules(monkeypatch, roblox=True)
+    modules = install_modules(monkeypatch, youtube=True)
     write_rules(
         app_dir,
         make_config(
-            resources={
-                "roblox": make_resource(
+            resources=[
+                youtube_resource(
                     default=make_day_policy(daily_limit_minutes=45, warning_minutes=[10, 5, 1])
                 )
-            }
+            ]
         ),
     )
-    add_usage(app_dir / "state", "roblox", 45 * 60, window_id="all_day", now=MONDAY_AFTERNOON)
+    add_usage(app_dir / "state", VIDEO, YOUTUBE, 45 * 60, window_id="all_day", now=MONDAY_AFTERNOON)
 
     run_cycles(app_dir, monkeypatch)
 
-    modules["roblox"].enforce.assert_called_once()
-    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 45 * 60
+    modules["youtube"].enforce.assert_called_once()
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON) == 45 * 60
 
 
 def test_notification_failure_still_records_usage(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
     monkeypatch.setattr(controller, "show_notification", MagicMock(side_effect=RuntimeError("osascript failed")))
-    modules = install_modules(monkeypatch, roblox=True)
+    modules = install_modules(monkeypatch, youtube=True)
     write_rules(
         app_dir,
         make_config(
-            resources={
-                "roblox": make_resource(
+            resources=[
+                youtube_resource(
                     default=make_day_policy(daily_limit_minutes=45, warning_minutes=[10, 5, 1])
                 )
-            }
+            ]
         ),
     )
-    add_usage(app_dir / "state", "roblox", 45 * 60 - 10 * 60 - 8, window_id="all_day", now=MONDAY_AFTERNOON)
+    add_usage(app_dir / "state", VIDEO, YOUTUBE, 45 * 60 - 10 * 60 - 8, window_id="all_day", now=MONDAY_AFTERNOON)
 
     run_cycles(app_dir, monkeypatch)
 
-    modules["roblox"].enforce.assert_not_called()
-    assert get_usage(app_dir / "state", "roblox", now=MONDAY_AFTERNOON) == 45 * 60 - 10 * 60 - 8 + 15
-    assert load_state(app_dir / "state", "roblox", now=MONDAY_AFTERNOON)["warnings_sent"] == []
+    modules["youtube"].enforce.assert_not_called()
+    assert get_usage(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON) == 45 * 60 - 10 * 60 - 8 + 15
+    assert load_state(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_AFTERNOON)["warnings_sent"] == []
 
 
 def test_browse_log_records_front_tab(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
-    install_modules(monkeypatch, roblox=False)
+    install_modules(monkeypatch, youtube=False)
     monkeypatch.setattr(
         controller.browse,
         "inspect",
@@ -721,7 +735,7 @@ def test_browse_log_records_front_tab(app_dir, monkeypatch):
             "title": "Example",
         },
     )
-    write_rules(app_dir, make_config(log_browsing=True))
+    write_rules(app_dir, make_config(log_browsing=True, resources=[youtube_resource()]))
 
     run_cycles(app_dir, monkeypatch)
 
@@ -735,10 +749,10 @@ def test_browse_log_records_front_tab(app_dir, monkeypatch):
 
 def test_browse_log_can_be_disabled(app_dir, monkeypatch):
     freeze_now(monkeypatch, MONDAY_AFTERNOON)
-    install_modules(monkeypatch, roblox=False)
+    install_modules(monkeypatch, youtube=False)
     inspect = MagicMock(return_value={"host": "www.example.com", "url": "https://www.example.com/", "title": "X"})
     monkeypatch.setattr(controller.browse, "inspect", inspect)
-    write_rules(app_dir, make_config(log_browsing=False))
+    write_rules(app_dir, make_config(log_browsing=False, resources=[youtube_resource()]))
 
     run_cycles(app_dir, monkeypatch)
 
@@ -765,7 +779,7 @@ def test_screen_time_counts_elapsed_for_bundle_app(app_dir, monkeypatch):
                 timestamp=now,
                 idle_seconds=0,
                 screen_locked=False,
-                frontmost=FrontmostApp("Roblox", "com.roblox.RobloxPlayer", 99),
+                frontmost=FrontmostApp("Roblox", ROBLOX, 99),
             )
 
     monkeypatch.setattr(controller, "create_activity_monitor", lambda: FakeMonitor())
@@ -773,15 +787,7 @@ def test_screen_time_counts_elapsed_for_bundle_app(app_dir, monkeypatch):
     modules["roblox"].inspect = MagicMock(return_value={"foreground": True})
     write_rules(
         app_dir,
-        make_config(
-            resources={
-                "roblox": make_resource(
-                    enabled=True,
-                    type="app",
-                    bundle_ids=["com.roblox.RobloxPlayer"],
-                )
-            }
-        ),
+        make_config(resources=[roblox_resource(enabled=True)]),
     )
 
     slept, sleep = stop_after(2)
@@ -794,5 +800,5 @@ def test_screen_time_counts_elapsed_for_bundle_app(app_dir, monkeypatch):
     with pytest.raises(LoopStop):
         controller.run(app_dir)
 
-    assert get_usage(app_dir / "state", "roblox", now=times[1]) == 10
+    assert get_usage(app_dir / "state", APP, ROBLOX, now=times[1]) == 10
     modules["roblox"].enforce.assert_not_called()

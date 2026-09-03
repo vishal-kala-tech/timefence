@@ -167,12 +167,12 @@ def test_inspect_returns_parsed_video(monkeypatch):
     )
     page = youtube.inspect({})
     assert page["playback"] == "playing"
-    assert page["video"] == {
-        "id": "dQw4w9WgXcQ",
-        "title": "Never Gonna Give You Up",
-        "channel": "",
-        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    }
+    assert page["video"]["id"] == "dQw4w9WgXcQ"
+    assert page["video"]["title"] == "Never Gonna Give You Up"
+    assert page["video"]["channel"] == ""
+    assert page["video"]["url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert page["video"]["resource_type"] == "video_category"
+    assert page["video"]["resource_id"] == "youtube_videos"
 
 
 def test_inspect_fills_channel_from_youtube_api(monkeypatch):
@@ -224,12 +224,12 @@ def test_parse_video_from_watch_share_and_shorts_urls():
     assert youtube.parse_video("https://m.youtube.com/watch?v=dQw4w9WgXcQ")["id"] == "dQw4w9WgXcQ"
     assert youtube.parse_video("https://youtu.be/dQw4w9WgXcQ")["url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     shorts = youtube.parse_video("https://www.youtube.com/shorts/xyz12345678", "Clip - YouTube", "Clip Channel")
-    assert shorts == {
-        "id": "xyz12345678",
-        "title": "Clip",
-        "channel": "Clip Channel",
-        "url": "https://www.youtube.com/shorts/xyz12345678",
-    }
+    assert shorts["id"] == "xyz12345678"
+    assert shorts["title"] == "Clip"
+    assert shorts["channel"] == "Clip Channel"
+    assert shorts["url"] == "https://www.youtube.com/shorts/xyz12345678"
+    assert shorts["resource_type"] == "video_category"
+    assert shorts["resource_id"] == "youtube_shorts"
     assert youtube.parse_video("https://www.youtube.com/") is None
     assert youtube.parse_video("https://www.youtube.com/watch?v=") is None
 

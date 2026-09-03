@@ -11,14 +11,22 @@ from pathlib import Path
 from .browse import load_browse_state
 from .budget import format_clock, format_time_of_day
 from .config import load_config
+from .identity import (
+    RESOURCE_TYPE_VIDEO_CATEGORY,
+    YOUTUBE_SHORTS_RESOURCE_ID,
+    YOUTUBE_VIDEOS_RESOURCE_ID,
+    default_display_name,
+    listed_resources,
+    resource_id_of,
+    resource_type_of,
+)
 from .policy import resource_label
 from .usage import load_state
 
-VIDEO_RESOURCES = ("youtube", "youtube_shorts")
-DEFAULT_LABELS = {
-    "youtube": "YouTube",
-    "youtube_shorts": "YouTube Shorts",
-}
+VIDEO_RESOURCES = (
+    (RESOURCE_TYPE_VIDEO_CATEGORY, YOUTUBE_VIDEOS_RESOURCE_ID),
+    (RESOURCE_TYPE_VIDEO_CATEGORY, YOUTUBE_SHORTS_RESOURCE_ID),
+)
 
 
 def format_seen(value):
@@ -95,24 +103,25 @@ def _section_intro(label, count, total, singular, plural, verb):
     return f"{label}: {clause} {verb}, for a total of {format_clock(total)}."
 
 
-def _label_for(name, cfg):
-    resource = (cfg.get("resources") or {}).get(name) or {}
-    if resource.get("display_name"):
-        return resource_label(name, resource)
-    return DEFAULT_LABELS.get(name, name)
+def _label_for(resource_type, resource_id, cfg):
+    for resource in listed_resources(cfg):
+        if resource_type_of(resource) == resource_type and resource_id_of(resource) == resource_id:
+            return resource_label(resource_id, resource)
+    return default_display_name(resource_type, resource_id)
 
 
 def summarize(cfg, state_dir, now=None):
     now = now or datetime.now()
     cfg = cfg or {}
     sections = []
-    for name in VIDEO_RESOURCES:
-        videos = load_state(state_dir, name, now=now).get("videos") or []
+    for resource_type, resource_id in VIDEO_RESOURCES:
+        videos = load_state(state_dir, resource_type, resource_id, now=now).get("videos") or []
         sections.append(
             {
                 "kind": "videos",
-                "name": name,
-                "label": _label_for(name, cfg),
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "label": _label_for(resource_type, resource_id, cfg),
                 "items": videos,
                 "total": sum(int(item.get("usage_seconds") or 0) for item in videos),
             }

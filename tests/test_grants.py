@@ -13,8 +13,8 @@ from timefence.grants import (
     load_grant,
     plan_grant,
 )
+from timefence.identity import RESOURCE_TYPE_VIDEO_CATEGORY, YOUTUBE_SHORTS_RESOURCE_ID, YOUTUBE_VIDEOS_RESOURCE_ID
 from timefence.policy import evaluate
-from timefence.usage import add_usage
 from tests.helpers import make_config, make_day_policy, make_resource, make_window, write_rules
 
 MONDAY_NOON = datetime(2024, 1, 15, 12, 0)
@@ -26,6 +26,8 @@ POLICY = make_day_policy(
         make_window("evening", "19:00", "20:30", limit_minutes=30),
     ],
 )
+VIDEO = RESOURCE_TYPE_VIDEO_CATEGORY
+YOUTUBE = YOUTUBE_VIDEOS_RESOURCE_ID
 
 
 def test_grant_expiry_stops_at_midnight():
@@ -74,45 +76,61 @@ def test_plan_grant_window_limit_adds_window_and_daily_if_needed():
 
 
 def test_apply_grant_persists_and_expires(app_dir):
-    grant = apply_grant(app_dir / "state", "youtube", POLICY, 15, now=MONDAY_NOON)
-    loaded = load_grant(app_dir / "state", "youtube", now=MONDAY_NOON + timedelta(minutes=5))
+    grant = apply_grant(app_dir / "state", VIDEO, YOUTUBE, POLICY, 15, now=MONDAY_NOON)
+    loaded = load_grant(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_NOON + timedelta(minutes=5))
     assert loaded["expires_at"] == grant["expires_at"]
-    assert load_grant(app_dir / "state", "youtube", now=MONDAY_NOON + timedelta(minutes=16)) is None
-    assert load_grant(app_dir / "state", "youtube", now=datetime(2024, 1, 16, 10, 0)) is None
+    assert load_grant(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_NOON + timedelta(minutes=16)) is None
+    assert load_grant(app_dir / "state", VIDEO, YOUTUBE, now=datetime(2024, 1, 16, 10, 0)) is None
 
 
 def test_apply_grant_merges_extra_time(app_dir):
-    apply_grant(app_dir / "state", "youtube", POLICY, 10, now=MONDAY_NOON)
-    merged = apply_grant(app_dir / "state", "youtube", POLICY, 10, now=MONDAY_NOON + timedelta(minutes=2))
+    apply_grant(app_dir / "state", VIDEO, YOUTUBE, POLICY, 10, now=MONDAY_NOON)
+    merged = apply_grant(app_dir / "state", VIDEO, YOUTUBE, POLICY, 10, now=MONDAY_NOON + timedelta(minutes=2))
     assert merged["extra_daily_seconds"] == 20 * 60
     assert merged["expires_at"] == "2024-01-15T12:12:00"
 
 
 def test_clear_grant(app_dir):
-    apply_grant(app_dir / "state", "youtube", POLICY, 15, now=MONDAY_NOON)
-    clear_grant(app_dir / "state", "youtube", now=MONDAY_NOON)
-    assert load_grant(app_dir / "state", "youtube", now=MONDAY_NOON) is None
+    apply_grant(app_dir / "state", VIDEO, YOUTUBE, POLICY, 15, now=MONDAY_NOON)
+    clear_grant(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_NOON)
+    assert load_grant(app_dir / "state", VIDEO, YOUTUBE, now=MONDAY_NOON) is None
 
 
 def test_find_resource_by_display_name():
     cfg = make_config(
-        resources={"youtube_shorts": make_resource(display_name="YouTube Shorts")}
+        resources=[
+            make_resource(
+                resource_type=VIDEO,
+                resource_id=YOUTUBE_SHORTS_RESOURCE_ID,
+                display_name="YouTube Shorts",
+            )
+        ]
     )
-    name, resource = find_resource(cfg, "youtube shorts")
-    assert name == "youtube_shorts"
+    resource = find_resource(cfg, resource_type=VIDEO, resource_id="youtube shorts")
+    assert resource is not None
+    assert resource["resource_id"] == YOUTUBE_SHORTS_RESOURCE_ID
     assert resource["display_name"] == "YouTube Shorts"
 
 
 def test_grant_from_config(app_dir):
     write_rules(
         app_dir,
-        make_config(resources={"youtube": make_resource(display_name="YouTube", default=POLICY)}),
+        make_config(
+            resources=[
+                make_resource(
+                    resource_type=VIDEO,
+                    resource_id=YOUTUBE,
+                    display_name="YouTube",
+                    default=POLICY,
+                )
+            ]
+        ),
     )
     from timefence.config import load_config
 
     cfg = load_config(app_dir / "config/rules.json")
-    name, grant = grant_from_config(cfg, app_dir / "state", "YouTube", 15, now=MONDAY_NOON)
-    assert name == "youtube"
+    resource, grant = grant_from_config(cfg, app_dir / "state", VIDEO, YOUTUBE, 15, now=MONDAY_NOON)
+    assert resource["resource_id"] == YOUTUBE
     assert "Bonus until" in grant_summary(grant, now=MONDAY_NOON)
 
 

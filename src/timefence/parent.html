@@ -1341,18 +1341,19 @@
     function resourceCard(resource) {
       const card = document.createElement("article");
       card.className = "card resource";
-      card.dataset.id = resource.id;
+      card.dataset.resourceType = resource.resource_type || "";
+      card.dataset.resourceId = resource.resource_id || "";
       const title = document.createElement("div");
       title.className = "card-head resource-title";
       const headingWrap = document.createElement("div");
       headingWrap.className = "resource-heading";
-      headingWrap.append(usageMark(resource.display_name || resource.id));
+      headingWrap.append(usageMark(resource.display_name || resource.resource_id));
       const heading = document.createElement("h2");
-      heading.textContent = resource.display_name || resource.id;
+      heading.textContent = resource.display_name || resource.resource_id;
       headingWrap.append(heading);
       const enabled = switchControl("enabled", resource.enabled !== false, "Enabled");
       title.append(headingWrap, enabled);
-      const name = input({ type: "text", className: "display-name", value: resource.display_name || resource.id });
+      const name = input({ type: "text", className: "display-name", value: resource.display_name || resource.resource_id });
       const tabs = document.createElement("div");
       tabs.className = "segment";
       tabs.setAttribute("role", "tablist");
@@ -1384,7 +1385,8 @@
 
     function collectResource(card) {
       const item = {
-        id: card.dataset.id,
+        resource_type: card.dataset.resourceType,
+        resource_id: card.dataset.resourceId,
         display_name: card.querySelector(".display-name").value,
         enabled: card.querySelector(".enabled").checked,
         default: collectDay(card.querySelector('[data-day="default"]'))
@@ -1409,8 +1411,8 @@
       (payload.resources || []).forEach((resource) => {
         if (!resource.enabled) return;
         const option = document.createElement("option");
-        option.value = resource.id;
-        option.textContent = resource.label;
+        option.value = resource.resource_type + "/" + resource.resource_id;
+        option.textContent = resource.display_name || resource.label || resource.resource_id;
         grantResource.append(option);
       });
       if (selected) grantResource.value = selected;
@@ -1418,15 +1420,15 @@
       (payload.grants || []).forEach((row) => {
         const item = document.createElement("li");
         const text = document.createElement("span");
-        text.textContent = `${row.label}: ${row.summary}`;
+        text.textContent = `${row.display_name || row.label}: ${row.summary}`;
         const clear = document.createElement("button");
         clear.type = "button";
         clear.className = "secondary";
         clear.textContent = "Clear";
         clear.addEventListener("click", async () => {
           try {
-            renderGrants(await api("/api/grants/" + encodeURIComponent(row.id), { method: "DELETE" }));
-            flash("ok", "Cleared bonus time for " + row.label + ".");
+            renderGrants(await api("/api/grants/" + encodeURIComponent(row.resource_type) + "/" + encodeURIComponent(row.resource_id), { method: "DELETE" }));
+            flash("ok", "Cleared bonus time for " + (row.display_name || row.label) + ".");
             if (activityDate) loadActivity(activityDate).catch((err) => flash("err", err.message));
           } catch (err) {
             flash("err", err.message);
@@ -1848,7 +1850,7 @@
       show(activityEmpty, !payload.has_data);
       const s = payload.summary || {};
       const totalSplit = Math.max(1, (s.app_seconds || 0) + (s.site_seconds || 0));
-      const youtubeLimit = (payload.limits || []).find((row) => row.id === "youtube");
+      const youtubeLimit = (payload.limits || []).find((row) => row.resource_id === "youtube_videos");
       const videoAlert = Boolean(youtubeLimit && youtubeLimit.status && youtubeLimit.status !== "ok");
       activityStats.replaceChildren(
         metricCard(
@@ -2050,7 +2052,15 @@
       try {
         const payload = await api("/api/grants", {
           method: "POST",
-          body: { resource: grantResource.value, minutes: Number(grantMinutes.value) }
+          body: (() => {
+            const value = grantResource.value || "";
+            const slash = value.indexOf("/");
+            return {
+              resource_type: slash >= 0 ? value.slice(0, slash) : "",
+              resource_id: slash >= 0 ? value.slice(slash + 1) : value,
+              minutes: Number(grantMinutes.value)
+            };
+          })()
         });
         renderGrants(payload);
         flash("ok", "Granted extra time. The kid page will show it after the next refresh.");

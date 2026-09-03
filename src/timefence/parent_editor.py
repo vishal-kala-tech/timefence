@@ -15,6 +15,7 @@ accidentally lock the child by clearing every window.
 import re
 
 from .config import validate_config
+from .identity import listed_resources, resource_id_of, resource_type_of
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
@@ -118,18 +119,19 @@ def editor_to_day(payload):
 def editor_from_config(cfg):
     """Subset the live file for the form. Weekend days are optional overlays on `default`."""
     resources = []
-    for name, resource in (cfg.get("resources") or {}).items():
-        if not isinstance(resource, dict):
-            continue
+    for resource in listed_resources(cfg):
         policy = resource.get("policy") or {}
         default = policy.get("default")
         if default is None:
             default = policy.get("weekday")
         days = policy.get("days") if isinstance(policy.get("days"), dict) else {}
+        rtype = resource_type_of(resource)
+        rid = resource_id_of(resource)
         resources.append(
             {
-                "id": name,
-                "display_name": resource.get("display_name") or name,
+                "resource_type": rtype,
+                "resource_id": rid,
+                "display_name": resource.get("display_name") or rid,
                 "enabled": bool(resource.get("enabled", True)),
                 "default": day_to_editor(default) or day_to_editor({"daily_limit_minutes": 0, "allowed_windows": []}),
                 "saturday": day_to_editor(days.get("saturday")),
@@ -154,15 +156,15 @@ def apply_editor(existing, editor):
         cfg["revision"] = 1
     if "log_browsing" in editor:
         cfg["log_browsing"] = bool(editor.get("log_browsing"))
-    resources = dict(cfg.get("resources") or {})
+    resources = list(listed_resources(cfg))
+    by_key = {(resource_type_of(item), resource_id_of(item)): item for item in resources}
     for item in editor.get("resources") or []:
         if not isinstance(item, dict):
             continue
-        name = str(item.get("id") or "").strip()
-        if name not in resources or not isinstance(resources[name], dict):
-            # Editor cannot create resources; unknown ids are ignored.
+        key = (str(item.get("resource_type") or "").strip(), str(item.get("resource_id") or "").strip())
+        if key not in by_key:
             continue
-        resource = dict(resources[name])
+        resource = dict(by_key[key])
         resource["enabled"] = bool(item.get("enabled", True))
         display = str(item.get("display_name") or "").strip()
         if display:
@@ -176,13 +178,13 @@ def apply_editor(existing, editor):
                 days[day_name] = editor_to_day(payload)
             else:
                 days.pop(day_name, None)
-        extra = {key: value for key, value in days.items() if key not in ("saturday", "sunday")}
-        days = {**extra, **{key: days[key] for key in ("saturday", "sunday") if key in days}}
+        extra = {day_key: value for day_key, value in days.items() if day_key not in ("saturday", "sunday")}
+        days = {**extra, **{day_key: days[day_key] for day_key in ("saturday", "sunday") if day_key in days}}
         if days:
             policy["days"] = days
         else:
             policy.pop("days", None)
         resource["policy"] = policy
-        resources[name] = resource
-    cfg["resources"] = resources
+        by_key[key] = resource
+    cfg["resources"] = list(by_key.values())
     return validate_config(cfg)

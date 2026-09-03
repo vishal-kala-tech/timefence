@@ -4,42 +4,44 @@ from timefence.activity import (
     usage_id_for_activity,
     uses_app_capture,
 )
+from timefence.identity import RESOURCE_TYPE_APP, RESOURCE_TYPE_WEBSITE, resource_id_of
 from timefence.models.activity import KIND_APP, KIND_WEBSITE, Activity
 from tests.helpers import make_resource
 
 ROBLOX = "com.roblox.RobloxPlayer"
 DISCORD = "com.hnc.Discord"
 
-RESOURCES = {
-    "roblox": make_resource(
-        enabled=True,
-        type="app",
+RESOURCES = [
+    make_resource(
+        resource_type=RESOURCE_TYPE_APP,
+        resource_id=ROBLOX,
         display_name="Roblox",
-        bundle_ids=[ROBLOX, "com.roblox.Roblox"],
+        match_ids=[ROBLOX, "com.roblox.Roblox"],
     ),
-    "discord": make_resource(
-        enabled=True,
-        type="app",
+    make_resource(
+        resource_type=RESOURCE_TYPE_APP,
+        resource_id=DISCORD,
         display_name="Discord",
-        bundle_ids=[DISCORD],
+        match_ids=[DISCORD],
     ),
-    "youtube": make_resource(
-        enabled=True,
-        type="website",
+    make_resource(
+        resource_type=RESOURCE_TYPE_WEBSITE,
+        resource_id="youtube.com",
+        display_name="YouTube",
         url_contains=["youtube.com/watch"],
     ),
-}
+]
 
 
 def test_bundle_id_matches_configured_roblox():
     match = find_resource_by_bundle_id(RESOURCES, ROBLOX)
     assert match is not None
-    assert match[0] == "roblox"
+    assert resource_id_of(match) == ROBLOX
 
 
 def test_bundle_id_match_is_case_insensitive():
     match = find_resource_by_bundle_id(RESOURCES, "COM.ROBLOX.ROBLOXPLAYER")
-    assert match[0] == "roblox"
+    assert resource_id_of(match) == ROBLOX
 
 
 def test_unknown_bundle_id_returns_none():
@@ -49,35 +51,35 @@ def test_unknown_bundle_id_returns_none():
 
 
 def test_disabled_resource_is_not_matched():
-    resources = {
-        "roblox": make_resource(enabled=False, type="app", bundle_ids=[ROBLOX]),
-        "discord": make_resource(enabled=True, type="app", bundle_ids=[DISCORD]),
-    }
+    resources = [
+        make_resource(enabled=False, resource_type=RESOURCE_TYPE_APP, resource_id=ROBLOX, match_ids=[ROBLOX]),
+        make_resource(enabled=True, resource_type=RESOURCE_TYPE_APP, resource_id=DISCORD, match_ids=[DISCORD]),
+    ]
     assert find_resource_by_bundle_id(resources, ROBLOX) is None
-    assert find_resource_by_bundle_id(resources, DISCORD)[0] == "discord"
+    assert resource_id_of(find_resource_by_bundle_id(resources, DISCORD)) == DISCORD
 
 
 def test_activity_dispatch_matches_app_and_future_website():
     app = Activity(kind=KIND_APP, identifier=ROBLOX, display_name="Roblox", pid=11)
-    assert find_resource_for_activity(RESOURCES, app)[0] == "roblox"
+    assert resource_id_of(find_resource_for_activity(RESOURCES, app)) == ROBLOX
     web = Activity(kind=KIND_WEBSITE, identifier="https://www.youtube.com/watch?v=abc")
-    assert find_resource_for_activity(RESOURCES, web)[0] == "youtube"
+    assert resource_id_of(find_resource_for_activity(RESOURCES, web)) == "youtube.com"
 
 
-def test_usage_id_uses_rules_name_or_bundle_id():
+def test_usage_id_uses_canonical_bundle_or_observed_id():
     listed = Activity(kind=KIND_APP, identifier=ROBLOX, display_name="Roblox")
     other = Activity(kind=KIND_APP, identifier="com.apple.finder", display_name="Finder")
     web = Activity(kind=KIND_WEBSITE, identifier="https://example.com/")
-    assert usage_id_for_activity(RESOURCES, listed) == "roblox"
+    assert usage_id_for_activity(RESOURCES, listed) == ROBLOX
     assert usage_id_for_activity(RESOURCES, other) == "com.apple.finder"
     assert usage_id_for_activity(RESOURCES, web) is None
 
 
 def test_uses_app_capture_for_bundle_and_type_app():
-    assert uses_app_capture(RESOURCES["roblox"]) is True
-    assert uses_app_capture(RESOURCES["youtube"]) is False
-    assert uses_app_capture(make_resource(type="app")) is True
-    assert uses_app_capture(make_resource()) is False
+    assert uses_app_capture(RESOURCES[0]) is True
+    assert uses_app_capture(RESOURCES[2]) is False
+    assert uses_app_capture(make_resource(resource_type=RESOURCE_TYPE_APP)) is True
+    assert uses_app_capture(make_resource(resource_type=RESOURCE_TYPE_WEBSITE, resource_id="github.com")) is False
 
 
 def test_monitor_treats_loginwindow_as_locked():

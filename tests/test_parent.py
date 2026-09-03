@@ -8,6 +8,7 @@ import pytest
 
 from timefence import parent_auth
 from timefence.config import load_config
+from timefence.identity import RESOURCE_TYPE_APP, RESOURCE_TYPE_VIDEO_CATEGORY, YOUTUBE_VIDEOS_RESOURCE_ID
 from timefence.parent_editor import apply_editor, editor_from_config
 from timefence.parent_page import render as render_parent
 from timefence.status_server import ensure, setup_url, stop, url
@@ -28,16 +29,21 @@ def test_set_pin_rejects_short_and_unlocks(app_dir):
     assert parent_auth.unlock(app_dir, "2468") == token
 
 
+def _by_key(cfg):
+    return {(item["resource_type"], item["resource_id"]): item for item in cfg["resources"]}
+
+
 def test_editor_round_trip_preserves_filters_and_overrides(app_dir):
     cfg = make_config(
         revision=4,
         log_browsing=True,
-        resources={
-            "youtube": make_resource(
+        resources=[
+            make_resource(
+                resource_type=RESOURCE_TYPE_VIDEO_CATEGORY,
+                resource_id=YOUTUBE_VIDEOS_RESOURCE_ID,
                 display_name="YouTube",
                 url_contains=["youtube.com/watch"],
                 url_excludes=["youtube.com/shorts"],
-                type="website",
                 module="youtube",
                 date_overrides={"2026-12-25": make_day_policy(daily_limit_minutes=0)},
                 default=make_day_policy(
@@ -47,7 +53,7 @@ def test_editor_round_trip_preserves_filters_and_overrides(app_dir):
                 ),
                 days={"monday": make_day_policy(daily_limit_minutes=10)},
             )
-        },
+        ],
     )
     editor = editor_from_config(cfg)
     editor["log_browsing"] = False
@@ -59,13 +65,14 @@ def test_editor_round_trip_preserves_filters_and_overrides(app_dir):
         "windows": [{"name": "morning", "start": "10:00", "end": "12:00", "limit_minutes": 20}],
     }
     saved = apply_editor(cfg, editor)
-    youtube = saved["resources"]["youtube"]
+    youtube = _by_key(saved)[(RESOURCE_TYPE_VIDEO_CATEGORY, YOUTUBE_VIDEOS_RESOURCE_ID)]
     assert saved["revision"] == 5
     assert saved["log_browsing"] is False
     assert youtube["display_name"] == "YT"
     assert youtube["url_contains"] == ["youtube.com/watch"]
     assert youtube["url_excludes"] == ["youtube.com/shorts"]
-    assert youtube["type"] == "website"
+    assert youtube["resource_type"] == RESOURCE_TYPE_VIDEO_CATEGORY
+    assert youtube["resource_id"] == YOUTUBE_VIDEOS_RESOURCE_ID
     assert youtube["policy"]["date_overrides"]["2026-12-25"]["daily_limit_minutes"] == 0
     assert youtube["policy"]["days"]["monday"]["daily_limit_minutes"] == 10
     assert youtube["policy"]["days"]["saturday"]["allowed_windows"][0]["id"] == "morning"
@@ -75,11 +82,14 @@ def test_editor_round_trip_preserves_filters_and_overrides(app_dir):
 def test_editor_round_trip_shipped_rules():
     cfg = load_config(SHIPPED)
     again = apply_editor(cfg, editor_from_config(cfg))
-    youtube = again["resources"]["youtube"]
-    assert youtube["url_contains"] == cfg["resources"]["youtube"]["url_contains"]
-    assert youtube["url_excludes"] == cfg["resources"]["youtube"]["url_excludes"]
+    youtube = _by_key(again)[(RESOURCE_TYPE_VIDEO_CATEGORY, YOUTUBE_VIDEOS_RESOURCE_ID)]
+    original = _by_key(cfg)[(RESOURCE_TYPE_VIDEO_CATEGORY, YOUTUBE_VIDEOS_RESOURCE_ID)]
+    assert youtube["url_contains"] == original["url_contains"]
+    assert youtube["url_excludes"] == original["url_excludes"]
     assert again["revision"] == cfg["revision"] + 1
-    assert again["resources"]["roblox"]["policy"]["days"]["saturday"]["daily_limit_minutes"] == 120
+    assert _by_key(again)[(RESOURCE_TYPE_APP, "com.roblox.Roblox")]["policy"]["days"]["saturday"][
+        "daily_limit_minutes"
+    ] == 120
 
 
 def test_parent_html_has_grant_and_rules_forms():
@@ -123,15 +133,17 @@ def test_parent_http_pin_rules_and_grant(app_dir):
     write_rules(
         app_dir,
         make_config(
-            resources={
-                "youtube": make_resource(
+            resources=[
+                make_resource(
+                    resource_type=RESOURCE_TYPE_VIDEO_CATEGORY,
+                    resource_id=YOUTUBE_VIDEOS_RESOURCE_ID,
                     display_name="YouTube",
                     default=make_day_policy(
                         daily_limit_minutes=30,
                         allowed_windows=[make_window("evening", "17:00", "19:00", limit_minutes=30)],
                     ),
                 )
-            }
+            ]
         ),
     )
     httpd, port = ensure(app_dir, 0)
@@ -166,12 +178,15 @@ def test_parent_http_pin_rules_and_grant(app_dir):
 
         code, editor = _json(anon, base + "/api/rules")
         assert code == 200
-        assert editor["resources"][0]["id"] == "youtube"
+        assert editor["resources"][0]["resource_type"] == RESOURCE_TYPE_VIDEO_CATEGORY
+        assert editor["resources"][0]["resource_id"] == YOUTUBE_VIDEOS_RESOURCE_ID
         editor["resources"][0]["default"]["daily_limit_minutes"] = 25
         code, saved = _json(anon, base + "/api/rules", "PUT", editor)
         assert code == 200
         assert saved["resources"][0]["default"]["daily_limit_minutes"] == 25
-        assert load_config(app_dir / "config/rules.json")["resources"]["youtube"]["policy"]["default"]["daily_limit_minutes"] == 25
+        live = load_config(app_dir / "config/rules.json")
+        youtube = _by_key(live)[(RESOURCE_TYPE_VIDEO_CATEGORY, YOUTUBE_VIDEOS_RESOURCE_ID)]
+        assert youtube["policy"]["default"]["daily_limit_minutes"] == 25
 
         other = _opener()
         code, payload = _json(other, base + "/api/pin", "POST", {"pin": "0000"})
@@ -179,12 +194,27 @@ def test_parent_http_pin_rules_and_grant(app_dir):
         code, payload = _json(other, base + "/api/grants")
         assert code == 401
 
-        code, granted = _json(anon, base + "/api/grants", "POST", {"resource": "youtube", "minutes": 15})
+        code, granted = _json(
+            anon,
+            base + "/api/grants",
+            "POST",
+            {
+                "resource_type": RESOURCE_TYPE_VIDEO_CATEGORY,
+                "resource_id": YOUTUBE_VIDEOS_RESOURCE_ID,
+                "minutes": 15,
+            },
+        )
         assert code == 200
-        assert granted["grants"][0]["id"] == "youtube"
+        assert granted["grants"][0]["resource_type"] == RESOURCE_TYPE_VIDEO_CATEGORY
+        assert granted["grants"][0]["resource_id"] == YOUTUBE_VIDEOS_RESOURCE_ID
+        assert granted["grants"][0]["display_name"] == "YouTube"
         assert "Bonus until" in granted["grants"][0]["summary"]
 
-        code, cleared = _json(anon, base + "/api/grants/youtube", "DELETE")
+        code, cleared = _json(
+            anon,
+            base + f"/api/grants/{RESOURCE_TYPE_VIDEO_CATEGORY}/{YOUTUBE_VIDEOS_RESOURCE_ID}",
+            "DELETE",
+        )
         assert code == 200
         assert cleared["grants"] == []
 

@@ -1,22 +1,17 @@
-"""JSON usage files: `state/<resource>/<date>.json`.
+"""JSON usage cache: `state/<resource_type>/<resource_id>/<date>.json`.
 
-Daily totals, warning keys, and a cache of YouTube videos still live here.
-Per-window seconds, browser visits, and watch rows are stored in
-`state/screen_time.sqlite`. `rules.json` still defines window ids, hours, and
-limits.
-
-One file per resource per local calendar day. Midnight does not erase
-history; it starts a new file. Corrupt JSON resets to empty for that day
-rather than crashing the agent.
-
-Atomic save (`tmp` then replace) plus a pipe-separated Excel dump of the
-same day. Consecutive polls of the same YouTube id stay one watch row.
+Daily totals, windows, and watch rows are stored in SQLite keyed by
+(resource_type, resource_id). JSON keeps warning keys and a cache of the rest.
+App rows are screen time. Website and video_category rows attribute the same
+foreground interval and must not be summed into screen time.
 """
 
 import json
 import logging
 from datetime import date, datetime
 from pathlib import Path
+
+from .identity import RESOURCE_TYPE_APP, RESOURCE_TYPE_VIDEO_CATEGORY
 
 MAX_VIDEOS = 5000
 USAGE_TABLE_FIELDS = (
@@ -44,8 +39,8 @@ def _day(now=None):
     return datetime.strptime(str(now)[:10], "%Y-%m-%d").date()
 
 
-def _path(state_dir, resource, now=None):
-    return Path(state_dir) / resource / f"{_day(now).isoformat()}.json"
+def _path(state_dir, resource_type, resource_id, now=None):
+    return Path(state_dir) / str(resource_type) / str(resource_id) / f"{_day(now).isoformat()}.json"
 
 
 def usage_table_path(state_dir, now=None):
@@ -82,17 +77,18 @@ def write_usage_table(state_dir, now=None):
     day = _day(now).isoformat()
     state_dir = Path(state_dir)
     rows = ["|".join(USAGE_TABLE_FIELDS)]
-    for json_path in sorted(state_dir.glob(f"*/{day}.json")):
-        resource = json_path.parent.name
-        if resource == "browse":
+    for json_path in sorted(state_dir.glob(f"*/*/{day}.json")):
+        resource_id = json_path.parent.name
+        resource_type = json_path.parent.parent.name
+        if resource_type in ("browse", "config"):
             continue
-        state = load_state(state_dir, resource, now=day)
-        rows.append(_usage_row(day, resource, "daily", seconds=state.get("total_usage_seconds", 0)))
+        state = load_state(state_dir, resource_type, resource_id, now=day)
+        rows.append(_usage_row(day, resource_id, "daily", seconds=state.get("total_usage_seconds", 0)))
         for window_id, payload in sorted((state.get("windows") or {}).items()):
             rows.append(
                 _usage_row(
                     day,
-                    resource,
+                    resource_id,
                     "window",
                     window=window_id,
                     seconds=(payload or {}).get("usage_seconds", 0),
@@ -102,7 +98,7 @@ def write_usage_table(state_dir, now=None):
             rows.append(
                 _usage_row(
                     day,
-                    resource,
+                    resource_id,
                     "video",
                     seconds=video.get("usage_seconds", 0),
                     video=video,
@@ -255,12 +251,14 @@ def _updated_at(now=None):
     return datetime.now().replace(microsecond=0).isoformat()
 
 
-def _overlay_window_usage(state, state_dir, resource, now=None):
-    """Prefer SQLite window seconds. Legacy JSON counters apply until a row exists."""
+def _overlay_window_usage(state, state_dir, resource_type, resource_id, now=None):
+    """Prefer SQLite window seconds."""
     path = _sqlite_path(state_dir)
     if not path.exists():
         return state
-    sqlite_windows = _sqlite_store(state_dir).get_windows(_day(now).isoformat(), resource)
+    sqlite_windows = _sqlite_store(state_dir).get_windows(
+        _day(now).isoformat(), resource_type, resource_id
+    )
     if not sqlite_windows:
         return state
     windows = state.setdefault("windows", {})
@@ -270,56 +268,65 @@ def _overlay_window_usage(state, state_dir, resource, now=None):
     return state
 
 
-def _overlay_watches(state, state_dir, resource, now=None):
-    """Prefer SQLite watch rows. Copy leftover JSON videos when that resource/date has no rows yet."""
+def _overlay_watches(state, state_dir, resource_type, resource_id, now=None):
+    """Prefer SQLite watch rows."""
     store = _sqlite_store(state_dir)
     usage_date = _day(now).isoformat()
-    videos = store.get_watches(usage_date, resource)
-    if not videos:
-        store.seed_watches(usage_date, resource, state.get("videos") or [])
-        videos = store.get_watches(usage_date, resource)
+    videos = store.get_watches(usage_date, resource_id, resource_type=resource_type)
     if videos:
         state["videos"] = videos
     return state
 
 
-def _record_watch(state_dir, resource, video, seconds, now, json_videos):
+def _record_watch(state_dir, resource_type, resource_id, video, seconds, now):
     store = _sqlite_store(state_dir)
     usage_date = _day(now).isoformat()
-    store.seed_watches(usage_date, resource, json_videos)
     result = store.add_watch(
-        usage_date, resource, video, int(seconds), _timestamp(now), max_rows=MAX_VIDEOS
+        usage_date,
+        resource_id,
+        video,
+        int(seconds),
+        _timestamp(now),
+        resource_type=resource_type,
+        max_rows=MAX_VIDEOS,
     )
     if result == "full":
         logging.warning("Watch history full (%s); not adding %s", MAX_VIDEOS, (video or {}).get("id"))
-    return store.get_watches(usage_date, resource)
+    return store.get_watches(usage_date, resource_id, resource_type=resource_type)
 
 
-def _add_window_seconds(state_dir, resource, window_id, seconds, now, json_windows):
-    """Write the increment to SQLite, seeding from JSON when this day has no window rows yet."""
+def _add_window_seconds(state_dir, resource_type, resource_id, window_id, seconds, now):
     store = _sqlite_store(state_dir)
     usage_date = _day(now).isoformat()
     stamp = _updated_at(now)
-    if not store.get_windows(usage_date, resource):
-        for other_id, payload in (json_windows or {}).items():
-            seed = int((payload or {}).get("usage_seconds", 0) or 0)
-            if seed:
-                store.add_window_seconds(usage_date, resource, other_id, seed, stamp)
-    return store.add_window_seconds(usage_date, resource, window_id, int(seconds), stamp)
+    return store.add_window_seconds(
+        usage_date, resource_type, resource_id, window_id, int(seconds), stamp
+    )
 
 
-def load_state(state_dir, resource, now=None):
+def load_state(state_dir, resource_type, resource_id, now=None):
     """Today's usage for one resource. Missing or corrupt file → empty totals, not an error."""
-    path = _path(state_dir, resource, now=now)
+    path = _path(state_dir, resource_type, resource_id, now=now)
     if not path.exists():
         state = empty_state(now)
     else:
         try:
             state = _normalize(json.loads(path.read_text()), now=now)
         except (OSError, ValueError, TypeError) as exc:
-            logging.warning("Corrupt usage state for %s (%s); resetting", resource, exc)
+            logging.warning("Corrupt usage state for %s/%s (%s); resetting", resource_type, resource_id, exc)
             state = empty_state(now)
-    return _overlay_watches(_overlay_window_usage(state, state_dir, resource, now=now), state_dir, resource, now=now)
+    store = _sqlite_store(state_dir)
+    usage_date = _day(now).isoformat()
+    row = store.get_daily(usage_date, resource_type, resource_id)
+    if row is not None:
+        state["total_usage_seconds"] = int(row.total_active_seconds)
+    return _overlay_watches(
+        _overlay_window_usage(state, state_dir, resource_type, resource_id, now=now),
+        state_dir,
+        resource_type,
+        resource_id,
+        now=now,
+    )
 
 
 def _save(path, state):
@@ -329,51 +336,67 @@ def _save(path, state):
     tmp.write_text(json.dumps(state, indent=2))
     tmp.replace(path)
     try:
-        write_usage_table(path.parent.parent, now=state.get("date"))
+        write_usage_table(path.parent.parent.parent, now=state.get("date"))
     except Exception:
         logging.exception("Usage table export failed")
 
 
-def get_usage(state_dir, resource, window_id=None, now=None):
-    state = load_state(state_dir, resource, now=now)
+def get_usage(state_dir, resource_type, resource_id, window_id=None, now=None):
+    state = load_state(state_dir, resource_type, resource_id, now=now)
     if window_id:
         return int((state["windows"].get(window_id) or {}).get("usage_seconds", 0))
     return int(state["total_usage_seconds"])
 
 
-def add_usage(state_dir, resource, seconds, window_id=None, now=None, video=None):
-    """Increment today's daily JSON total and, when set, the SQLite window counter."""
-    path = _path(state_dir, resource, now=now)
-    state = load_state(state_dir, resource, now=now)
+def add_usage(
+    state_dir,
+    resource_type,
+    resource_id,
+    seconds,
+    window_id=None,
+    now=None,
+    video=None,
+    credit_daily=True,
+):
+    """Increment today's totals. App screen-time ticks set credit_daily=False
+    because UsageTracker already wrote the SQLite app row."""
+    path = _path(state_dir, resource_type, resource_id, now=now)
+    state = load_state(state_dir, resource_type, resource_id, now=now)
     state["date"] = _day(now).isoformat()
-    state["total_usage_seconds"] = int(state["total_usage_seconds"]) + int(seconds)
+    stamp = _updated_at(now)
+    if credit_daily:
+        total = _sqlite_store(state_dir).add_active_seconds(
+            state["date"], resource_type, resource_id, int(seconds), stamp
+        )
+        state["total_usage_seconds"] = total
     if window_id:
-        json_windows = dict(state.get("windows") or {})
-        total = _add_window_seconds(state_dir, resource, window_id, int(seconds), now, json_windows)
+        total_window = _add_window_seconds(
+            state_dir, resource_type, resource_id, window_id, int(seconds), now
+        )
         window = state["windows"].setdefault(window_id, {"usage_seconds": 0, "warnings_sent": []})
-        window["usage_seconds"] = total
+        window["usage_seconds"] = total_window
         window.setdefault("warnings_sent", [])
     if video:
         state["videos"] = _record_watch(
-            state_dir, resource, video, seconds, now, list(state.get("videos") or [])
+            state_dir, resource_type, resource_id, video, seconds, now
         )
     _save(path, state)
     return state
 
 
-def note_video(state_dir, resource, video, now=None):
-    path = _path(state_dir, resource, now=now)
-    state = load_state(state_dir, resource, now=now)
+def note_video(state_dir, resource_type, resource_id, video, now=None):
+    path = _path(state_dir, resource_type, resource_id, now=now)
+    state = load_state(state_dir, resource_type, resource_id, now=now)
     state["date"] = _day(now).isoformat()
-    state["videos"] = _record_watch(state_dir, resource, video, 0, now, list(state.get("videos") or []))
+    state["videos"] = _record_watch(state_dir, resource_type, resource_id, video, 0, now)
     _save(path, state)
     return state
 
 
-def mark_warning_sent(state_dir, resource, warning, now=None):
+def mark_warning_sent(state_dir, resource_type, resource_id, warning, now=None):
     """Persist a warning key so the same threshold does not re-alert this day."""
-    path = _path(state_dir, resource, now=now)
-    state = load_state(state_dir, resource, now=now)
+    path = _path(state_dir, resource_type, resource_id, now=now)
+    state = load_state(state_dir, resource_type, resource_id, now=now)
     key = warning.persist_key if hasattr(warning, "persist_key") else str(warning)
     window_id = getattr(warning, "window_id", None)
     if window_id:

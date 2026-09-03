@@ -22,5 +22,5 @@ class RuleEngine:
         label = resource_label(name, resource)
         return due_warnings(policy, usage_state, window=window, label=label, grant=grant, now=now)
 
-    def load_grant(self, state_dir, resource_id, current_time=None):
-        return load_grant(state_dir, resource_id, now=current_time)
+    def load_grant(self, state_dir, resource_type, resource_id, current_time=None):
+        return load_grant(state_dir, resource_type, resource_id, now=current_time)

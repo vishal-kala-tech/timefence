@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "revision": 6,
+  "revision": 7,
   "check_interval_seconds": 15,
   "log_browsing": true,
   "screen_time": {
@@ -9,300 +9,423 @@
     "idle_threshold_seconds": 120,
     "max_countable_interval_seconds": 30
   },
-  "resources": {
-    "roblox": {
-      "enabled": true,
+  "resources": [
+    {
+      "resource_type": "app",
+      "resource_id": "com.roblox.Roblox",
       "display_name": "Roblox",
-      "type": "app",
-      "process_pattern": "Roblox",
-      "bundle_ids": [
+      "match_ids": [
         "com.roblox.RobloxPlayer",
         "com.roblox.Roblox"
       ],
+      "module": "roblox",
+      "process_pattern": "Roblox",
+      "enabled": true,
       "policy": {
         "default": {
           "daily_limit_minutes": 45,
-          "warning_minutes": [10, 5, 1],
+          "warning_minutes": [
+            10,
+            5,
+            1
+          ],
           "allowed_windows": [
             {
               "id": "after_school",
               "start": "16:00",
               "end": "18:00",
               "limit_minutes": 30,
-              "warning_minutes": [5, 1]
+              "warning_minutes": [
+                5,
+                1
+              ]
             },
             {
               "id": "evening",
               "start": "19:00",
               "end": "20:30",
               "limit_minutes": 30,
-              "warning_minutes": [5, 1]
+              "warning_minutes": [
+                5,
+                1
+              ]
             }
           ]
         },
         "days": {
           "saturday": {
             "daily_limit_minutes": 120,
-            "warning_minutes": [10, 5, 1],
+            "warning_minutes": [
+              10,
+              5,
+              1
+            ],
             "allowed_windows": [
               {
                 "id": "morning",
                 "start": "09:00",
                 "end": "12:00",
                 "limit_minutes": 60,
-                "warning_minutes": [10, 5, 1]
+                "warning_minutes": [
+                  10,
+                  5,
+                  1
+                ]
               },
               {
                 "id": "afternoon",
                 "start": "14:00",
                 "end": "17:00",
                 "limit_minutes": 60,
-                "warning_minutes": [10, 5, 1]
+                "warning_minutes": [
+                  10,
+                  5,
+                  1
+                ]
               },
               {
                 "id": "evening",
                 "start": "19:00",
                 "end": "21:00",
                 "limit_minutes": 30,
-                "warning_minutes": [5, 1]
+                "warning_minutes": [
+                  5,
+                  1
+                ]
               }
             ]
           },
           "sunday": {
             "daily_limit_minutes": 120,
-            "warning_minutes": [10, 5, 1],
+            "warning_minutes": [
+              10,
+              5,
+              1
+            ],
             "allowed_windows": [
               {
                 "id": "morning",
                 "start": "09:00",
                 "end": "12:00",
                 "limit_minutes": 60,
-                "warning_minutes": [10, 5, 1]
+                "warning_minutes": [
+                  10,
+                  5,
+                  1
+                ]
               },
               {
                 "id": "afternoon",
                 "start": "14:00",
                 "end": "17:00",
                 "limit_minutes": 60,
-                "warning_minutes": [10, 5, 1]
+                "warning_minutes": [
+                  10,
+                  5,
+                  1
+                ]
               },
               {
                 "id": "evening",
                 "start": "19:00",
                 "end": "21:00",
                 "limit_minutes": 30,
-                "warning_minutes": [5, 1]
+                "warning_minutes": [
+                  5,
+                  1
+                ]
               }
             ]
           }
         }
       }
     },
-    "cursor": {
-      "enabled": true,
+    {
+      "resource_type": "app",
+      "resource_id": "com.todesktop.230313mzl4w4u92",
       "display_name": "Cursor",
-      "type": "app",
       "process_pattern": "Cursor",
-      "bundle_ids": [
-        "com.todesktop.230313mzl4w4u92"
-      ],
+      "enabled": true,
       "policy": {
         "default": {
           "daily_limit_minutes": 0
         }
       }
     },
-    "visual_studio": {
-      "enabled": true,
+    {
+      "resource_type": "app",
+      "resource_id": "com.microsoft.VSCode",
       "display_name": "VS Code",
-      "type": "app",
-      "process_pattern": "Visual Studio",
-      "bundle_ids": [
+      "match_ids": [
         "com.microsoft.VSCode",
         "com.microsoft.VSCodeInsiders",
         "com.microsoft.visual-studio"
       ],
+      "process_pattern": "Visual Studio",
+      "enabled": true,
       "policy": {
         "default": {
           "daily_limit_minutes": 0
         }
       }
     },
-    "chrome": {
-      "enabled": true,
-      "display_name": "Chrome",
-      "type": "app",
-      "process_pattern": "Google Chrome",
-      "bundle_ids": [
+    {
+      "resource_type": "app",
+      "resource_id": "com.google.Chrome",
+      "display_name": "Google Chrome",
+      "match_ids": [
         "com.google.Chrome",
         "com.google.Chrome.beta",
         "com.google.Chrome.canary"
       ],
+      "process_pattern": "Google Chrome",
+      "enabled": true,
       "policy": {
         "default": {
           "daily_limit_minutes": 0
         }
       }
     },
-    "safari": {
-      "enabled": true,
+    {
+      "resource_type": "app",
+      "resource_id": "com.apple.Safari",
       "display_name": "Safari",
-      "type": "app",
       "process_pattern": "Safari",
-      "bundle_ids": [
-        "com.apple.Safari"
-      ],
+      "enabled": true,
       "policy": {
         "default": {
           "daily_limit_minutes": 0
         }
       }
     },
-    "pycharm": {
-      "enabled": true,
+    {
+      "resource_type": "app",
+      "resource_id": "com.jetbrains.pycharm",
       "display_name": "PyCharm",
-      "type": "app",
-      "process_pattern": "PyCharm",
-      "bundle_ids": [
+      "match_ids": [
         "com.jetbrains.pycharm",
         "com.jetbrains.pycharm.ce"
       ],
+      "process_pattern": "PyCharm",
+      "enabled": true,
       "policy": {
         "default": {
           "daily_limit_minutes": 0
         }
       }
     },
-    "youtube": {
-      "enabled": true,
-      "display_name": "YouTube",
-      "type": "website",
+    {
+      "resource_type": "video_category",
+      "resource_id": "youtube_videos",
+      "display_name": "YouTube Videos",
       "module": "youtube",
-      "browsers": ["chrome", "safari"],
-      "url_contains": ["youtube.com/watch", "youtu.be/"],
-      "url_excludes": ["youtube.com/shorts"],
+      "browsers": [
+        "chrome",
+        "safari"
+      ],
+      "url_contains": [
+        "youtube.com/watch",
+        "youtu.be/"
+      ],
+      "url_excludes": [
+        "youtube.com/shorts"
+      ],
+      "enabled": true,
       "policy": {
         "default": {
           "daily_limit_minutes": 3,
-          "warning_minutes": [2, 1],
+          "warning_minutes": [
+            2,
+            1
+          ],
           "allowed_windows": [
             {
               "id": "evening",
               "start": "17:00",
               "end": "23:00",
               "limit_minutes": 30,
-              "warning_minutes": [2, 1]
+              "warning_minutes": [
+                2,
+                1
+              ]
             }
           ]
         },
         "days": {
           "saturday": {
             "daily_limit_minutes": 60,
-            "warning_minutes": [10, 5, 1],
+            "warning_minutes": [
+              10,
+              5,
+              1
+            ],
             "allowed_windows": [
               {
                 "id": "morning",
                 "start": "10:00",
                 "end": "12:00",
                 "limit_minutes": 30,
-                "warning_minutes": [5, 1]
+                "warning_minutes": [
+                  5,
+                  1
+                ]
               },
               {
                 "id": "afternoon",
                 "start": "15:00",
                 "end": "18:00",
                 "limit_minutes": 30,
-                "warning_minutes": [5, 1]
+                "warning_minutes": [
+                  5,
+                  1
+                ]
               }
             ]
           },
           "sunday": {
             "daily_limit_minutes": 60,
-            "warning_minutes": [10, 5, 1],
+            "warning_minutes": [
+              10,
+              5,
+              1
+            ],
             "allowed_windows": [
               {
                 "id": "morning",
                 "start": "10:00",
                 "end": "12:00",
                 "limit_minutes": 30,
-                "warning_minutes": [5, 1]
+                "warning_minutes": [
+                  5,
+                  1
+                ]
               },
               {
                 "id": "afternoon",
                 "start": "15:00",
                 "end": "18:00",
                 "limit_minutes": 30,
-                "warning_minutes": [5, 1]
+                "warning_minutes": [
+                  5,
+                  1
+                ]
               }
             ]
           }
         }
       }
     },
-    "youtube_shorts": {
-      "enabled": true,
+    {
+      "resource_type": "video_category",
+      "resource_id": "youtube_shorts",
       "display_name": "YouTube Shorts",
-      "type": "website",
       "module": "youtube",
-      "browsers": ["chrome", "safari"],
-      "url_contains": ["youtube.com/shorts"],
+      "browsers": [
+        "chrome",
+        "safari"
+      ],
+      "url_contains": [
+        "youtube.com/shorts"
+      ],
+      "enabled": true,
       "policy": {
         "default": {
           "daily_limit_minutes": 3,
-          "warning_minutes": [2, 1],
+          "warning_minutes": [
+            2,
+            1
+          ],
           "allowed_windows": [
             {
               "id": "evening",
               "start": "17:00",
               "end": "23:00",
               "limit_minutes": 30,
-              "warning_minutes": [2, 1]
+              "warning_minutes": [
+                2,
+                1
+              ]
             }
           ]
         },
         "days": {
           "saturday": {
             "daily_limit_minutes": 20,
-            "warning_minutes": [10, 5, 1],
+            "warning_minutes": [
+              10,
+              5,
+              1
+            ],
             "allowed_windows": [
               {
                 "id": "morning",
                 "start": "10:00",
                 "end": "12:00",
                 "limit_minutes": 15,
-                "warning_minutes": [5, 1]
+                "warning_minutes": [
+                  5,
+                  1
+                ]
               },
               {
                 "id": "afternoon",
                 "start": "15:00",
                 "end": "18:00",
                 "limit_minutes": 15,
-                "warning_minutes": [5, 1]
+                "warning_minutes": [
+                  5,
+                  1
+                ]
               }
             ]
           },
           "sunday": {
             "daily_limit_minutes": 20,
-            "warning_minutes": [10, 5, 1],
+            "warning_minutes": [
+              10,
+              5,
+              1
+            ],
             "allowed_windows": [
               {
                 "id": "morning",
                 "start": "10:00",
                 "end": "12:00",
                 "limit_minutes": 15,
-                "warning_minutes": [5, 1]
+                "warning_minutes": [
+                  5,
+                  1
+                ]
               },
               {
                 "id": "afternoon",
                 "start": "15:00",
                 "end": "18:00",
                 "limit_minutes": 15,
-                "warning_minutes": [5, 1]
+                "warning_minutes": [
+                  5,
+                  1
+                ]
               }
             ]
           }
         }
       }
+    },
+    {
+      "resource_type": "website",
+      "resource_id": "youtube.com",
+      "display_name": "YouTube",
+      "enabled": true,
+      "browsers": [
+        "chrome",
+        "safari"
+      ],
+      "policy": {
+        "default": {
+          "daily_limit_minutes": 0
+        }
+      }
     }
-  }
+  ]
 }

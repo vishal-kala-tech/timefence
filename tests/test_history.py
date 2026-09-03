@@ -2,6 +2,7 @@ from datetime import datetime
 
 from timefence.browse import note_visit
 from timefence.history import format_seen, format_summary, summarize
+from timefence.identity import RESOURCE_TYPE_VIDEO_CATEGORY, YOUTUBE_VIDEOS_RESOURCE_ID
 from timefence.usage import add_usage
 from tests.helpers import make_config, make_resource
 
@@ -18,7 +19,8 @@ def test_format_seen_uses_plain_times():
 def test_summarize_videos_and_sites_in_sentences(app_dir):
     add_usage(
         app_dir / "state",
-        "youtube",
+        RESOURCE_TYPE_VIDEO_CATEGORY,
+        YOUTUBE_VIDEOS_RESOURCE_ID,
         15,
         window_id="all_day",
         now=WHEN,
@@ -31,7 +33,8 @@ def test_summarize_videos_and_sites_in_sentences(app_dir):
     )
     add_usage(
         app_dir / "state",
-        "youtube",
+        RESOURCE_TYPE_VIDEO_CATEGORY,
+        YOUTUBE_VIDEOS_RESOURCE_ID,
         15,
         window_id="all_day",
         now=LATER,
@@ -53,7 +56,15 @@ def test_summarize_videos_and_sites_in_sentences(app_dir):
     )
     text = format_summary(
         summarize(
-            make_config(resources={"youtube": make_resource(display_name="YouTube")}),
+            make_config(
+                resources=[
+                    make_resource(
+                        resource_type=RESOURCE_TYPE_VIDEO_CATEGORY,
+                        resource_id=YOUTUBE_VIDEOS_RESOURCE_ID,
+                        display_name="YouTube",
+                    )
+                ]
+            ),
             app_dir / "state",
             now=WHEN,
         ),

@@ -2,50 +2,38 @@ from datetime import datetime
 from urllib.request import urlopen
 
 from timefence import browse
+from timefence.identity import RESOURCE_TYPE_APP, RESOURCE_TYPE_VIDEO_CATEGORY, YOUTUBE_VIDEOS_RESOURCE_ID
 from timefence.status_page import page_model, render_html, write_html
 from timefence.status_server import ensure, stop, url
 from timefence.usage import add_usage
 from tests.helpers import make_config, make_day_policy, make_resource, make_window, write_rules
 
 MONDAY_AFTERNOON = datetime(2024, 1, 15, 16, 30)
+ROBLOX = "com.roblox.RobloxPlayer"
+
+
+def _roblox():
+    return make_resource(
+        resource_id=ROBLOX,
+        display_name="Roblox",
+        default=make_day_policy(
+            daily_limit_minutes=45,
+            allowed_windows=[
+                make_window("after_school", "16:00", "18:00", limit_minutes=30)
+            ],
+        ),
+    )
 
 
 def _rules(app_dir):
-    write_rules(
-        app_dir,
-        make_config(
-            resources={
-                "roblox": make_resource(
-                    display_name="Roblox",
-                    default=make_day_policy(
-                        daily_limit_minutes=45,
-                        allowed_windows=[
-                            make_window("after_school", "16:00", "18:00", limit_minutes=30)
-                        ],
-                    ),
-                )
-            }
-        ),
-    )
-    add_usage(app_dir / "state", "roblox", 12 * 60, window_id="after_school", now=MONDAY_AFTERNOON)
+    write_rules(app_dir, make_config(resources=[_roblox()]))
+    add_usage(app_dir / "state", RESOURCE_TYPE_APP, ROBLOX, 12 * 60, window_id="after_school", now=MONDAY_AFTERNOON)
 
 
 def test_page_model_remaining(app_dir):
     _rules(app_dir)
     model = page_model(
-        make_config(
-            resources={
-                "roblox": make_resource(
-                    display_name="Roblox",
-                    default=make_day_policy(
-                        daily_limit_minutes=45,
-                        allowed_windows=[
-                            make_window("after_school", "16:00", "18:00", limit_minutes=30)
-                        ],
-                    ),
-                )
-            }
-        ),
+        make_config(resources=[_roblox()]),
         app_dir / "state",
         now=MONDAY_AFTERNOON,
     )
@@ -62,11 +50,13 @@ def test_page_model_remaining(app_dir):
 
 def test_render_html_escapes_and_shows_remaining(app_dir):
     resource = make_resource(
+        resource_type=RESOURCE_TYPE_VIDEO_CATEGORY,
+        resource_id=YOUTUBE_VIDEOS_RESOURCE_ID,
         display_name='YouTube <script>alert("x")</script>',
         default=make_day_policy(daily_limit_minutes=10),
     )
     model = page_model(
-        make_config(resources={"youtube": resource}),
+        make_config(resources=[resource]),
         app_dir / "state",
         now=MONDAY_AFTERNOON,
     )
@@ -84,12 +74,12 @@ def test_write_html(app_dir):
         app_dir,
         now=MONDAY_AFTERNOON,
         cfg=make_config(
-            resources={
-                "roblox": make_resource(
+            resources=[
+                make_resource(
                     display_name="Roblox",
                     default=make_day_policy(daily_limit_minutes=45),
                 )
-            }
+            ]
         ),
     )
     text = path.read_text(encoding="utf-8")
@@ -118,12 +108,12 @@ def test_page_includes_top_websites(app_dir):
         now=t0,
     )
     cfg = make_config(
-        resources={
-            "roblox": make_resource(
+        resources=[
+            make_resource(
                 display_name="Roblox",
                 default=make_day_policy(daily_limit_minutes=45),
             )
-        }
+        ]
     )
     model = page_model(cfg, app_dir / "state", now=t0)
     assert [item["host"] for item in model["sites"]] == ["google.com", "news.ycombinator.com"]
@@ -146,13 +136,14 @@ def test_page_shows_bonus_grant(app_dir):
     )
     apply_grant(
         app_dir / "state",
-        "roblox",
+        RESOURCE_TYPE_APP,
+        ROBLOX,
         resolve_policy(resource, now=MONDAY_AFTERNOON),
         15,
         now=MONDAY_AFTERNOON,
     )
     model = page_model(
-        make_config(resources={"roblox": resource}),
+        make_config(resources=[resource]),
         app_dir / "state",
         now=MONDAY_AFTERNOON,
     )

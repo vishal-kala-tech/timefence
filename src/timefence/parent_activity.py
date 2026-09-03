@@ -10,23 +10,23 @@ from pathlib import Path
 from .browse import display_host, load_browse_state, top_sites
 from .budget import format_clock, format_span, format_time_of_day, format_window_name
 from .budget import summarize as budget_summarize
-from .bundle_ids import humanize_bundle_id
 from .config import load_config
-from .history import VIDEO_RESOURCES, format_summary, summarize
+from .history import format_summary, summarize
+from .identity import (
+    RESOURCE_TYPE_APP,
+    RESOURCE_TYPE_VIDEO_CATEGORY,
+    RESOURCE_TYPE_WEBSITE,
+    YOUTUBE_SHORTS_RESOURCE_ID,
+    YOUTUBE_VIDEOS_RESOURCE_ID,
+    default_display_name,
+    listed_resources,
+    resource_id_of,
+    resource_key,
+    resource_type_of,
+)
 from .policy import parse_hhmm, resource_label
 from .tracking.sqlite_usage_store import SqliteUsageStore
 from .usage import load_state
-
-DEFAULT_LABELS = {
-    "youtube": "YouTube",
-    "youtube_shorts": "YouTube Shorts",
-    "chrome": "Chrome",
-    "safari": "Safari",
-    "roblox": "Roblox",
-    "cursor": "Cursor",
-    "visual_studio": "VS Code",
-    "pycharm": "PyCharm",
-}
 
 
 def _today(now=None):
@@ -107,26 +107,18 @@ def _store(state_dir):
     return SqliteUsageStore(Path(state_dir) / "screen_time.sqlite")
 
 
-def _label_for(resource_id, cfg, names=None):
+def _label_for(resource_type, resource_id, cfg, names=None):
     names = names or {}
-    resources = cfg.get("resources") or {}
-    resource = resources.get(resource_id)
-    if isinstance(resource, dict):
-        label = resource_label(resource_id, resource)
-        if str(resource_id) == "visual_studio" and label.lower() in ("visual studio", "code"):
-            return "VS Code"
-        if label and label != resource_id:
-            return label
-    needle = str(resource_id or "").strip().lower()
-    for name, item in resources.items():
-        if name == resource_id or not isinstance(item, dict):
-            continue
-        ids = [str(item_id).strip().lower() for item_id in (item.get("bundle_ids") or [])]
-        if needle in ids:
-            return _label_for(name, cfg, names=names)
-    if needle in names:
-        return names[needle]
-    return DEFAULT_LABELS.get(resource_id) or humanize_bundle_id(resource_id)
+    for resource in listed_resources(cfg):
+        if resource_type_of(resource) == resource_type and resource_id_of(resource) == resource_id:
+            return resource_label(resource_id, resource)
+    key = (str(resource_type), str(resource_id).lower())
+    if key in names:
+        return names[key]
+    row = names.get(str(resource_id).lower())
+    if row:
+        return row
+    return default_display_name(resource_type, resource_id)
 
 
 def _format_clock_iso(value):
@@ -187,7 +179,11 @@ def _visit_payload(item):
         "host": host,
         "url": item.get("url") or "",
         "title": item.get("title") or "",
-        "browser": item.get("browser") or "",
+        "resource_type": item.get("resource_type") or RESOURCE_TYPE_WEBSITE,
+        "resource_id": item.get("resource_id") or host,
+        "display_name": item.get("display_name") or host,
+        "browser_resource_id": item.get("browser_resource_id") or "",
+        "browser_name": item.get("browser_name") or item.get("browser") or "",
         "seconds": int(item.get("usage_seconds") or 0),
         "seconds_label": format_clock(item.get("usage_seconds")),
         "first_seen": start,
@@ -197,8 +193,12 @@ def _visit_payload(item):
 
 
 def _video_payload(item):
+    resource_id = item.get("resource_id") or ""
     return {
-        "id": item.get("id") or "",
+        "resource_type": item.get("resource_type") or RESOURCE_TYPE_VIDEO_CATEGORY,
+        "resource_id": resource_id,
+        "video_id": item.get("video_id") or item.get("id") or "",
+        "id": item.get("video_id") or item.get("id") or "",
         "title": item.get("title") or "",
         "channel": item.get("channel") or "",
         "url": item.get("url") or "",
@@ -210,24 +210,19 @@ def _video_payload(item):
 
 
 def _daily_seconds(state_dir, usage_date, store):
-    rows = {item.resource_id: int(item.total_active_seconds or 0) for item in store.get_all_daily(usage_date)}
-    for path in Path(state_dir).glob(f"*/{usage_date}.json"):
-        name = path.parent.name
-        if name in ("browse",) or name in rows:
-            continue
-        state = load_state(state_dir, name, now=usage_date)
-        seconds = int(state.get("total_usage_seconds") or 0)
-        if seconds:
-            rows[name] = seconds
+    """Map (resource_type, resource_id) → seconds. App rows are screen time."""
+    rows = {}
+    for item in store.get_all_daily(usage_date):
+        rows[(item.resource_type, item.resource_id)] = int(item.total_active_seconds or 0)
     return rows
 
 
-def _app_rows(cfg, daily, sessions_by_id, windows_by_id, names=None):
+def _app_rows(cfg, daily, sessions_by_key, windows_by_key, names=None):
     apps = []
-    for resource_id, seconds in daily.items():
-        if resource_id in VIDEO_RESOURCES:
+    for (resource_type, resource_id), seconds in daily.items():
+        if resource_type != RESOURCE_TYPE_APP:
             continue
-        sessions = sessions_by_id.get(resource_id) or []
+        sessions = sessions_by_key.get((resource_type, resource_id)) or []
         if not seconds and not sessions:
             continue
         windows = [
@@ -237,13 +232,17 @@ def _app_rows(cfg, daily, sessions_by_id, windows_by_id, names=None):
                 "seconds": secs,
                 "seconds_label": format_clock(secs),
             }
-            for window_id, secs in sorted((windows_by_id.get(resource_id) or {}).items())
+            for window_id, secs in sorted((windows_by_key.get((resource_type, resource_id)) or {}).items())
             if secs
         ]
+        display = _label_for(resource_type, resource_id, cfg, names=names)
         apps.append(
             {
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "display_name": display,
                 "id": resource_id,
-                "label": _label_for(resource_id, cfg, names=names),
+                "label": display,
                 "seconds": int(seconds or 0),
                 "seconds_label": format_clock(seconds),
                 "seconds_compact": compact_clock(seconds),
@@ -271,9 +270,10 @@ def _current_activity(apps, visits, is_today, report_now):
                 if elapsed > seconds:
                     seconds = elapsed
             detail = ""
-            if app.get("id") in ("chrome", "safari") and visits:
-                latest = max(visits, key=lambda item: str(item.get("last_seen") or ""))
-                detail = latest.get("host") or ""
+            if "chrome" in str(app.get("resource_id") or "").lower() or "safari" in str(app.get("resource_id") or "").lower():
+                if visits:
+                    latest = max(visits, key=lambda item: str(item.get("last_seen") or ""))
+                    detail = latest.get("display_name") or latest.get("host") or ""
             return {
                 "label": app["label"],
                 "detail": detail,
@@ -303,8 +303,11 @@ def _budget_rows(cfg, state_dir, report_now, names=None):
                 status = "ok"
         rows.append(
             {
-                "id": row["name"],
-                "label": _label_for(row["name"], cfg, names=names),
+                "resource_type": row["resource_type"],
+                "resource_id": row["resource_id"],
+                "display_name": row["label"],
+                "id": row["resource_id"],
+                "label": row["label"],
                 "used_seconds": used,
                 "limit_seconds": limit,
                 "remaining_seconds": remaining,
@@ -390,7 +393,15 @@ def _daily_summary(apps, hosts, videos, limits, is_today):
             )
     if hosts:
         site = hosts[0]
-        chrome = next((app for app in apps if app["id"] in ("chrome", "safari")), None)
+        chrome = next(
+            (
+                app
+                for app in apps
+                if "chrome" in str(app.get("resource_id") or "").lower()
+                or "safari" in str(app.get("resource_id") or "").lower()
+            ),
+            None,
+        )
         if chrome:
             sentences.append(
                 f"{chrome['label']} was used for {compact_clock(chrome['seconds'])}, primarily on {site['host']}."
@@ -426,22 +437,25 @@ def day_report(app_dir, date=None, now=None):
     cfg = load_config(cfg_path) if cfg_path.exists() else {}
     store = _store(state_dir)
     names = {
-        str(row["bundle_id"]).lower(): row["display_name"]
-        for row in store.list_bundle_names()
+        (row["resource_type"], str(row["resource_id"]).lower()): row["display_name"]
+        for row in store.list_resources()
     }
 
     daily = _daily_seconds(state_dir, usage_date, store)
-    sessions_by_id = {}
+    sessions_by_key = {}
     for row in store.get_sessions_on_date(usage_date):
-        sessions_by_id.setdefault(row.resource_id, []).append(_session_payload(row))
-    windows_by_id = store.get_all_windows_for_date(usage_date)
-    apps = _app_rows(cfg, daily, sessions_by_id, windows_by_id, names=names)
+        sessions_by_key.setdefault((row.resource_type, row.resource_id), []).append(_session_payload(row))
+    windows_by_key = store.get_all_windows_for_date(usage_date)
+    apps = _app_rows(cfg, daily, sessions_by_key, windows_by_key, names=names)
     app_seconds = sum(item["seconds"] for item in apps)
 
     browse_state = load_browse_state(state_dir, now=day)
     visits = [_visit_payload(item) for item in browse_state.get("visits") or []]
     hosts = [
         {
+            "resource_type": RESOURCE_TYPE_WEBSITE,
+            "resource_id": item["host"],
+            "display_name": names.get((RESOURCE_TYPE_WEBSITE, item["host"].lower())) or item["host"],
             "host": item["host"],
             "seconds": int(item["seconds"] or 0),
             "seconds_label": format_clock(item["seconds"]),
@@ -456,16 +470,26 @@ def day_report(app_dir, date=None, now=None):
     video_groups = []
     video_seconds = 0
     video_count = 0
-    for name in VIDEO_RESOURCES:
-        items = [_video_payload(item) for item in load_state(state_dir, name, now=day).get("videos") or []]
+    for resource_type, resource_id in (
+        (RESOURCE_TYPE_VIDEO_CATEGORY, YOUTUBE_VIDEOS_RESOURCE_ID),
+        (RESOURCE_TYPE_VIDEO_CATEGORY, YOUTUBE_SHORTS_RESOURCE_ID),
+    ):
+        items = [
+            _video_payload({**item, "resource_type": resource_type, "resource_id": resource_id})
+            for item in load_state(state_dir, resource_type, resource_id, now=day).get("videos") or []
+        ]
         total = sum(item["seconds"] for item in items)
         video_seconds += total
         video_count += len(items)
         if items:
+            display = _label_for(resource_type, resource_id, cfg, names=names)
             video_groups.append(
                 {
-                    "id": name,
-                    "label": _label_for(name, cfg, names=names),
+                    "resource_type": resource_type,
+                    "resource_id": resource_id,
+                    "display_name": display,
+                    "id": resource_id,
+                    "label": display,
                     "seconds": total,
                     "seconds_label": format_clock(total),
                     "seconds_compact": compact_clock(total),
@@ -477,9 +501,9 @@ def day_report(app_dir, date=None, now=None):
     report_now = _report_now(day, today, now)
     budgets = _budget_rows(cfg, state_dir, report_now, names=names)
     limits = _limits_payload(budgets)
-    by_id = {row["id"]: row for row in budgets}
+    by_key = {(row["resource_type"], row["resource_id"]): row for row in budgets}
     for app in apps:
-        row = by_id.get(app["id"])
+        row = by_key.get((app["resource_type"], app["resource_id"]))
         if row and row.get("limit_seconds"):
             app["has_limit"] = True
             app["remaining_compact"] = row.get("remaining_compact") or compact_clock(row.get("remaining_seconds") or 0)
@@ -487,7 +511,7 @@ def day_report(app_dir, date=None, now=None):
         else:
             app["has_limit"] = False
     for group in video_groups:
-        row = by_id.get(group["id"])
+        row = by_key.get((group["resource_type"], group["resource_id"]))
         if row and row.get("limit_seconds"):
             group["has_limit"] = True
             group["remaining_compact"] = row.get("remaining_compact") or compact_clock(row.get("remaining_seconds") or 0)
@@ -544,5 +568,5 @@ def day_report(app_dir, date=None, now=None):
         "apps": apps,
         "sites": {"hosts": hosts, "visits": visits},
         "videos": video_groups,
-        "hint": "Chrome or Safari time includes YouTube and other sites. Video minutes are the YouTube budget, not extra.",
+        "hint": "Screen time is app foreground time only. Website and video minutes classify the same interval; they are not added to screen time.",
     }

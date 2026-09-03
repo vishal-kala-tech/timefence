@@ -15,6 +15,14 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
+from .identity import (
+    RESOURCE_TYPE_WEBSITE,
+    browser_display_name,
+    browser_resource_id,
+    default_display_name,
+    ensure_resource,
+    website_id,
+)
 from .usage import _cell, _day, _sqlite_store, _timestamp
 from .browsers.macos.chrome import browse_script as chrome_browse_script
 
@@ -47,7 +55,7 @@ def parse_page(url, title=""):
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         return None
-    host = (parsed.netloc or "").lower()
+    host = website_id(parsed.netloc or "")
     if not host:
         return None
     canonical = urlunparse(
@@ -57,6 +65,8 @@ def parse_page(url, title=""):
         "host": host,
         "url": canonical,
         "title": _clean_title(title),
+        "resource_type": RESOURCE_TYPE_WEBSITE,
+        "resource_id": host,
     }
 
 
@@ -128,9 +138,6 @@ def _overlay_browse_visits(state, state_dir, now=None):
     store = _sqlite_store(state_dir)
     usage_date = _day(now).isoformat()
     visits = store.get_browse_visits(usage_date)
-    if not visits:
-        store.seed_browse_visits(usage_date, state.get("visits") or [])
-        visits = store.get_browse_visits(usage_date)
     if visits:
         state["visits"] = visits
     return state
@@ -141,10 +148,7 @@ def load_browse_state(state_dir, now=None):
 
 
 def display_host(host):
-    text = str(host or "").strip().lower()
-    if text.startswith("www."):
-        text = text[4:]
-    return text
+    return website_id(host)
 
 
 def _is_local_host(host):
@@ -227,24 +231,37 @@ def note_visit(state_dir, page, seconds, now=None):
     usage_date = _day(now).isoformat()
     ts = _timestamp(now)
     title = str(page.get("title") or "")
-    browser = str(page.get("browser") or "")
+    browser_name = str(page.get("browser") or "")
+    browser_id = browser_resource_id(browser_name, page.get("browser_resource_id"))
+    site_id = website_id(host) or str(page.get("resource_id") or host)
     store = _sqlite_store(state_dir)
-    json_state = _load_browse_json(state_dir, now=now)
-    store.seed_browse_visits(usage_date, json_state.get("visits") or [])
     result = store.add_browse_visit(
         usage_date,
+        site_id,
         host,
         url,
         title,
         int(seconds),
         ts,
-        browser=browser,
+        browser_resource_id=browser_id,
+        browser_name=browser_display_name(browser_id, browser_name),
+        resource_type=RESOURCE_TYPE_WEBSITE,
         max_rows=MAX_VISITS,
     )
     if result == "full":
         logging.warning("Browse history full (%s); not adding %s", MAX_VISITS, url)
     elif result == "inserted":
-        logging.info("Visited %s %s", host, title or url)
+        logging.info("Visited %s %s", site_id, title or url)
+    if not _is_local_host(host) and int(seconds) > 0:
+        stamp = now.replace(microsecond=0).isoformat() if hasattr(now, "isoformat") else ts
+        store.add_active_seconds(usage_date, RESOURCE_TYPE_WEBSITE, site_id, int(seconds), stamp)
+        ensure_resource(
+            store,
+            RESOURCE_TYPE_WEBSITE,
+            site_id,
+            display_name=default_display_name(RESOURCE_TYPE_WEBSITE, site_id),
+            now=now,
+        )
     state = {"date": usage_date, "visits": store.get_browse_visits(usage_date)}
     _save_browse_state(browse_path(state_dir, now=now), state, state_dir)
     return state

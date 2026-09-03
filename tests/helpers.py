@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from timefence.identity import RESOURCE_TYPE_APP
+
 
 def make_window(window_id="all_day", start="00:00", end="24:00", limit_minutes=None, warning_minutes=None):
     window = {"id": window_id, "start": start, "end": end}
@@ -36,8 +38,22 @@ def make_policy(default=None, days=None, date_overrides=None, weekday=None, week
     return policy
 
 
-def make_resource(enabled=True, default=None, days=None, date_overrides=None, weekday=None, weekend=None, **extra):
+def make_resource(
+    resource_type=RESOURCE_TYPE_APP,
+    resource_id="com.roblox.RobloxPlayer",
+    display_name=None,
+    enabled=True,
+    default=None,
+    days=None,
+    date_overrides=None,
+    weekday=None,
+    weekend=None,
+    **extra,
+):
     resource = {
+        "resource_type": resource_type,
+        "resource_id": resource_id,
+        "display_name": display_name or resource_id,
         "enabled": enabled,
         "policy": make_policy(
             default=default,
@@ -56,7 +72,7 @@ def make_config(resources=None, revision=1, check_interval_seconds=15, version=1
         "version": version,
         "revision": revision,
         "check_interval_seconds": check_interval_seconds,
-        "resources": resources if resources is not None else {"roblox": make_resource()},
+        "resources": resources if resources is not None else [make_resource()],
     }
     if log_browsing is not None:
         cfg["log_browsing"] = log_browsing
@@ -65,5 +81,6 @@ def make_config(resources=None, revision=1, check_interval_seconds=15, version=1
 
 def write_rules(app_dir: Path, config: dict) -> Path:
     path = app_dir / "config" / "rules.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(config, indent=2))
     return path

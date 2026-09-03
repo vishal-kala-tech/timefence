@@ -15,6 +15,7 @@ from .grants import (
     grant_summary,
     load_grant,
 )
+from .identity import listed_resources, resource_id_of, resource_key, resource_type_of
 from .policy import evaluate, parse_hhmm, resource_label, resolve_policy
 from .usage import load_state
 
@@ -111,8 +112,9 @@ def _now_sentence(label, decision):
     return f"{label} is not allowed right now because it is outside an allowed window."
 
 
-def resource_budget(name, resource, state, now, grant=None):
+def resource_budget(resource, state, now, grant=None):
     """One status-card payload: allowed-now sentence, daily remaining, windows, bonus."""
+    rtype, rid = resource_key(resource)
     policy = resolve_policy(resource, now=now)
     decision = evaluate(policy, state, now=now, grant=grant)
     daily_limit = effective_daily_limit(policy, grant, now=now)
@@ -137,11 +139,14 @@ def resource_budget(name, resource, state, now, grant=None):
                 ),
             }
         )
+    label = resource_label(rid, resource)
     return {
-        "name": name,
-        "label": resource_label(name, resource),
+        "resource_type": rtype,
+        "resource_id": rid,
+        "name": rid,
+        "label": label,
         "enabled": bool(resource.get("enabled", True)),
-        "now": _now_sentence(resource_label(name, resource), decision),
+        "now": _now_sentence(label, decision),
         "allowed": decision.allowed,
         "daily_used": daily_used,
         "daily_limit": daily_limit,
@@ -154,12 +159,13 @@ def resource_budget(name, resource, state, now, grant=None):
 def summarize(cfg, state_dir, now=None):
     now = now or datetime.now()
     rows = []
-    for name, resource in (cfg.get("resources") or {}).items():
-        if not isinstance(resource, dict) or not resource.get("enabled", True):
+    for resource in listed_resources(cfg):
+        if not resource.get("enabled", True):
             continue
-        state = load_state(state_dir, name, now=now)
-        grant = load_grant(state_dir, name, now=now)
-        rows.append(resource_budget(name, resource, state, now, grant=grant))
+        rtype, rid = resource_key(resource)
+        state = load_state(state_dir, rtype, rid, now=now)
+        grant = load_grant(state_dir, rtype, rid, now=now)
+        rows.append(resource_budget(resource, state, now, grant=grant))
     return rows
 
 

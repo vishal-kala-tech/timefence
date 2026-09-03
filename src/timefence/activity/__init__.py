@@ -16,7 +16,9 @@ from .matching import (
     find_resource_by_url,
     find_resource_for_activity,
     usage_id_for_activity,
+    usage_identity_for_activity,
     uses_app_capture,
+    uses_video_capture,
 )
 
 __all__ = [
@@ -30,6 +32,8 @@ __all__ = [
     "find_resource_by_url",
     "find_resource_for_activity",
     "usage_id_for_activity",
+    "usage_identity_for_activity",
+    "uses_video_capture",
     "frontmost_application",
     "idle_seconds",
     "is_idle",

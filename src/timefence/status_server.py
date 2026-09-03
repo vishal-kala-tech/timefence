@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from . import parent_activity, parent_auth, parent_page
 from .config import load_config, save_config
 from .grants import clear_grant, grant_from_config, grant_rows
+from .identity import listed_resources, resource_id_of, resource_key, resource_type_of
 from .parent_editor import apply_editor, editor_from_config
 from .status_page import DEFAULT_STATUS_PORT, render, write_html
 
@@ -103,13 +104,14 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _grant_payload(self, cfg):
         resources = []
-        for name, resource in (cfg.get("resources") or {}).items():
-            if not isinstance(resource, dict):
-                continue
+        for resource in listed_resources(cfg):
+            rtype, rid = resource_key(resource)
             resources.append(
                 {
-                    "id": name,
-                    "label": resource.get("display_name") or name,
+                    "resource_type": rtype,
+                    "resource_id": rid,
+                    "display_name": resource.get("display_name") or rid,
+                    "label": resource.get("display_name") or rid,
                     "enabled": bool(resource.get("enabled", True)),
                 }
             )
@@ -187,26 +189,51 @@ class _Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     raise ValueError("Minutes must be a whole number")
                 cfg = _load_rules(app_dir)
-                name, _grant = grant_from_config(cfg, Path(app_dir) / "state", body.get("resource"), minutes)
-                logging.info("Parent granted %s +%s min", name, body.get("minutes"))
+                resource, _grant = grant_from_config(
+                    cfg,
+                    Path(app_dir) / "state",
+                    body.get("resource_type"),
+                    body.get("resource_id") or body.get("resource"),
+                    minutes,
+                )
+                rtype, rid = resource_key(resource)
+                logging.info("Parent granted %s/%s +%s min", rtype, rid, body.get("minutes"))
                 payload = self._grant_payload(cfg)
-                payload["granted"] = {"id": name, "summary": next((row["summary"] for row in payload["grants"] if row["id"] == name), None)}
+                payload["granted"] = {
+                    "resource_type": rtype,
+                    "resource_id": rid,
+                    "summary": next(
+                        (
+                            row["summary"]
+                            for row in payload["grants"]
+                            if row["resource_type"] == rtype and row["resource_id"] == rid
+                        ),
+                        None,
+                    ),
+                }
                 self._send_json(200, payload)
                 return
             if method == "DELETE" and path.startswith("/api/grants/"):
                 if not self._require_parent():
                     return
-                name = unquote(path[len("/api/grants/") :]).strip()
-                if not name:
+                rest = unquote(path[len("/api/grants/") :]).strip()
+                resource_type, _, resource_id = rest.partition("/")
+                resource_type = resource_type.strip()
+                resource_id = resource_id.strip()
+                if not resource_type or not resource_id:
                     self._send_json(400, {"error": "Missing resource"})
                     return
                 cfg = _load_rules(app_dir)
-                resources = cfg.get("resources") or {}
-                if name not in resources:
-                    self._send_json(404, {"error": f"Unknown resource {name!r}"})
+                resource = None
+                for item in listed_resources(cfg):
+                    if resource_type_of(item) == resource_type and resource_id_of(item) == resource_id:
+                        resource = item
+                        break
+                if resource is None:
+                    self._send_json(404, {"error": f"Unknown resource {resource_type}/{resource_id}"})
                     return
-                clear_grant(Path(app_dir) / "state", name)
-                logging.info("Parent cleared grant for %s", name)
+                clear_grant(Path(app_dir) / "state", resource_type, resource_id)
+                logging.info("Parent cleared grant for %s/%s", resource_type, resource_id)
                 self._send_json(200, self._grant_payload(cfg))
                 return
             self._send(404, "Not found.", "text/plain; charset=utf-8")

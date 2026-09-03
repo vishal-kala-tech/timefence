@@ -1,24 +1,28 @@
-"""Map an observed activity onto a TimeFence resource.
+"""Map an observed activity onto a listed TimeFence resource.
 
-On macOS, `bundle_ids` is the identifier. Other OSes use `app_ids.<os>` or
-`executables`. URL contains/excludes are for website activity (browser
-adapters or a future extension). First enabled match in `rules.json`
-insertion order wins.
+Identity is (resource_type, resource_id). Listed apps match on resource_id
+or match_ids. Unlisted foreground apps still use the observed bundle ID.
 """
 
+from ..identity import (
+    RESOURCE_TYPE_APP,
+    RESOURCE_TYPE_WEBSITE,
+    find_listed_resource,
+    listed_resources,
+    match_ids_for,
+    resource_id_of,
+    resource_type_of,
+    website_id,
+)
 from ..models.activity import KIND_APP, KIND_WEBSITE, Activity
 
 
 def _enabled_resources(resources):
-    if not isinstance(resources, dict):
-        return []
     out = []
-    for name, resource in resources.items():
-        if not isinstance(resource, dict):
-            continue
+    for resource in listed_resources(resources):
         if not resource.get("enabled", True):
             continue
-        out.append((name, resource))
+        out.append(resource)
     return out
 
 
@@ -42,12 +46,14 @@ def _string_list(values):
 
 
 def bundle_ids_for(resource):
-    """Configured bundle IDs, de-duplicated, original spelling preserved."""
-    return _string_list((resource or {}).get("bundle_ids"))
+    """Bundle IDs this listed app matches, including match_ids."""
+    if resource_type_of(resource) != RESOURCE_TYPE_APP:
+        return _string_list((resource or {}).get("bundle_ids"))
+    return match_ids_for(resource)
 
 
 def app_ids_for(resource, os_name=None):
-    """App identifiers for this OS: `app_ids.<os>`, else macOS `bundle_ids`, else `executables`."""
+    """App identifiers for this OS: `app_ids.<os>`, else macOS bundle IDs, else `executables`."""
     from ..platform.detect import DARWIN, current_os, os_aliases
 
     os_name = current_os(os_name)
@@ -65,14 +71,19 @@ def app_ids_for(resource, os_name=None):
 
 
 def find_resource_by_app_id(resources, app_id, os_name=None):
-    """Return (resource_id, resource) for the first enabled resource that lists this app id."""
+    """Return the listed app resource whose resource_id or match_ids include this app id."""
     key = str(app_id or "").strip().lower()
     if not key:
         return None
-    for name, resource in _enabled_resources(resources):
+    for resource in _enabled_resources(resources):
+        if resource_type_of(resource) != RESOURCE_TYPE_APP:
+            continue
         configured = [item.lower() for item in app_ids_for(resource, os_name=os_name)]
         if key in configured:
-            return name, resource
+            return resource
+    listed = find_listed_resource(resources, RESOURCE_TYPE_APP, app_id)
+    if listed is not None and listed.get("enabled", True):
+        return listed
     return None
 
 
@@ -82,18 +93,17 @@ def find_resource_by_bundle_id(resources, bundle_id):
 
 
 def find_resource_by_url(resources, url):
-    """Match a website resource by url_contains / url_excludes.
-
-    Browser adapters and UsageTracker (when Observation.activity.kind is
-    website) both use this. The OS activity monitor does not scrape URLs.
-    """
+    """Match a website or video_category resource by url_contains / url_excludes."""
     text = str(url or "")
     if not text:
         return None
-    for name, resource in _enabled_resources(resources):
-        if str(resource.get("type") or "").lower() not in ("website", "web", ""):
-            if resource.get("url_contains") is None:
-                continue
+    host = website_id(text)
+    for resource in _enabled_resources(resources):
+        rtype = resource_type_of(resource)
+        if rtype == RESOURCE_TYPE_WEBSITE and resource_id_of(resource).lower() == host:
+            contains = resource.get("url_contains")
+            if not isinstance(contains, list) or not contains:
+                return resource
         contains = resource.get("url_contains")
         if not isinstance(contains, list) or not contains:
             continue
@@ -102,12 +112,12 @@ def find_resource_by_url(resources, url):
         excludes = resource.get("url_excludes") or []
         if any(token and token in text for token in excludes):
             continue
-        return name, resource
+        return resource
     return None
 
 
 def find_resource_for_activity(resources, activity):
-    """Dispatch on Activity.kind. Returns None when the app/URL is not in rules.json."""
+    """Dispatch on Activity.kind. Returns None when the app/URL is not listed."""
     if activity is None:
         return None
     if not isinstance(activity, Activity):
@@ -119,33 +129,41 @@ def find_resource_for_activity(resources, activity):
     return None
 
 
-def usage_id_for_activity(resources, activity):
-    """Key used in SQLite/JSON for this observation.
+def usage_identity_for_activity(resources, activity):
+    """(resource_type, resource_id) used in SQLite for this observation.
 
-    Listed apps keep their rules.json name (`cursor`, `roblox`). Any other
-    foreground app is stored under its bundle ID so usage is not dropped.
-    Unmatched websites stay None (the YouTube adapter owns that path).
+    Listed apps use the configured resource_id. Any other foreground app is
+    stored under its bundle ID. Unmatched websites stay None.
     """
     match = find_resource_for_activity(resources, activity)
-    if match:
-        return match[0]
+    if match is not None:
+        return resource_type_of(match), resource_id_of(match)
     if activity is None or activity.kind != KIND_APP:
         return None
     identifier = str(activity.identifier or "").strip()
     if not identifier:
         return None
-    return identifier.replace("/", "_").replace("\\", "_")
+    return RESOURCE_TYPE_APP, identifier.replace("/", "_").replace("\\", "_")
+
+
+def usage_id_for_activity(resources, activity):
+    """Return resource_id only. Prefer usage_identity_for_activity for new code."""
+    identity = usage_identity_for_activity(resources, activity)
+    if identity is None:
+        return None
+    return identity[1]
 
 
 def uses_app_capture(resource):
-    """True if the controller should use the screen-time (app-id) path.
-
-    Resources with `bundle_ids`, `app_ids`, `executables`, or `type: app`
-    skip the old per-resource inspect/add-interval loop. Website resources
-    stay on the browser-tab adapter.
-    """
+    """True if the controller should use the screen-time (app) path."""
     if not isinstance(resource, dict):
         return False
+    if resource_type_of(resource) == RESOURCE_TYPE_APP:
+        return True
     if bundle_ids_for(resource) or resource.get("app_ids") or resource.get("executables"):
         return True
-    return str(resource.get("type") or "").lower() == "app"
+    return False
+
+
+def uses_video_capture(resource):
+    return resource_type_of(resource) == "video_category"

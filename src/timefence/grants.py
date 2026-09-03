@@ -17,6 +17,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from .identity import listed_resources, resource_id_of, resource_key, resource_type_of
 from .policy import limit_seconds, matching_window
 from .usage import load_state
 
@@ -137,9 +138,26 @@ def load_grants(state_dir, now=None):
     return {"date": data["date"], "grants": grants}
 
 
-def load_grant(state_dir, resource, now=None):
+def _grant_get(grants, resource_type, resource_id):
+    bucket = grants.get(resource_type) if isinstance(grants, dict) else None
+    if not isinstance(bucket, dict):
+        return None
+    return bucket.get(resource_id)
+
+
+def _grant_set(grants, resource_type, resource_id, grant):
+    bucket = grants.setdefault(resource_type, {})
+    if grant is None:
+        bucket.pop(resource_id, None)
+        if not bucket:
+            grants.pop(resource_type, None)
+    else:
+        bucket[resource_id] = grant
+
+
+def load_grant(state_dir, resource_type, resource_id, now=None):
     now = now or datetime.now()
-    grant = load_grants(state_dir, now=now)["grants"].get(resource)
+    grant = _grant_get(load_grants(state_dir, now=now)["grants"], resource_type, resource_id)
     return active_grant(grant, now=now)
 
 
@@ -152,21 +170,18 @@ def _save_grants(state_dir, payload):
     return path
 
 
-def save_grant(state_dir, resource, grant, now=None):
+def save_grant(state_dir, resource_type, resource_id, grant, now=None):
     now = now or datetime.now()
     payload = load_grants(state_dir, now=now)
     payload["date"] = now.date().isoformat()
     grants = payload.setdefault("grants", {})
-    if grant is None:
-        grants.pop(resource, None)
-    else:
-        grants[resource] = grant
+    _grant_set(grants, resource_type, resource_id, grant)
     _save_grants(state_dir, payload)
     return grant
 
 
-def clear_grant(state_dir, resource, now=None):
-    return save_grant(state_dir, resource, None, now=now)
+def clear_grant(state_dir, resource_type, resource_id, now=None):
+    return save_grant(state_dir, resource_type, resource_id, None, now=now)
 
 
 def _merge(existing, new, now):
@@ -229,15 +244,17 @@ def plan_grant(policy, state, minutes, now=None):
     }
 
 
-def apply_grant(state_dir, resource, policy, minutes, now=None):
+def apply_grant(state_dir, resource_type, resource_id, policy, minutes, now=None):
     now = now or datetime.now()
-    state = load_state(state_dir, resource, now=now)
+    state = load_state(state_dir, resource_type, resource_id, now=now)
     planned = plan_grant(policy, state, minutes, now=now)
-    merged = _merge(load_grants(state_dir, now=now)["grants"].get(resource), planned, now)
-    save_grant(state_dir, resource, merged, now=now)
+    existing = _grant_get(load_grants(state_dir, now=now)["grants"], resource_type, resource_id)
+    merged = _merge(existing, planned, now)
+    save_grant(state_dir, resource_type, resource_id, merged, now=now)
     logging.info(
-        "Granted %s +%s min until %s reason=%s extra_daily=%ss extra_windows=%s",
-        resource,
+        "Granted %s/%s +%s min until %s reason=%s extra_daily=%ss extra_windows=%s",
+        resource_type,
+        resource_id,
         minutes,
         merged.get("expires_at"),
         merged.get("reason"),
@@ -247,20 +264,22 @@ def apply_grant(state_dir, resource, policy, minutes, now=None):
     return merged
 
 
-def find_resource(cfg, name):
-    resources = (cfg or {}).get("resources") or {}
-    key = str(name or "").strip().lower()
-    if not key:
-        return None, None
-    if key in resources:
-        return key, resources[key]
-    for resource_id, resource in resources.items():
-        if not isinstance(resource, dict):
+def find_resource(cfg, resource_type=None, resource_id=None, name=None):
+    needle_type = str(resource_type or "").strip()
+    needle_id = str(resource_id or name or "").strip().lower()
+    if not needle_id:
+        return None
+    for resource in listed_resources(cfg):
+        rtype = resource_type_of(resource)
+        rid = resource_id_of(resource)
+        if needle_type and rtype != needle_type:
             continue
-        label = str(resource.get("display_name") or resource_id).strip().lower()
-        if label == key:
-            return resource_id, resource
-    return None, None
+        if rid.lower() == needle_id:
+            return resource
+        label = str(resource.get("display_name") or "").strip().lower()
+        if label and label == needle_id and (not needle_type or rtype == needle_type):
+            return resource
+    return None
 
 
 def grant_summary(grant, now=None):
@@ -279,17 +298,17 @@ def grant_rows(cfg, state_dir, now=None):
     now = now or datetime.now()
     stored = load_grants(state_dir, now=now)["grants"]
     rows = []
-    for name, resource in (cfg.get("resources") or {}).items():
-        if not isinstance(resource, dict):
-            continue
-        grant = active_grant(stored.get(name), now=now)
+    for resource in listed_resources(cfg):
+        rtype, rid = resource_key(resource)
+        grant = active_grant(_grant_get(stored, rtype, rid), now=now)
         if not grant:
             continue
         extra = _extra_daily(grant)
         rows.append(
             {
-                "id": name,
-                "label": resource.get("display_name") or name,
+                "resource_type": rtype,
+                "resource_id": rid,
+                "display_name": resource.get("display_name") or rid,
                 "minutes": grant.get("minutes") or 0,
                 "extra_minutes": extra // 60,
                 "expires_at": grant.get("expires_at"),
@@ -300,17 +319,18 @@ def grant_rows(cfg, state_dir, now=None):
 
 
 def list_grants(cfg, state_dir, now=None):
-    return [f"{row['label']}: {row['summary']}" for row in grant_rows(cfg, state_dir, now=now)]
+    return [f"{row['display_name']}: {row['summary']}" for row in grant_rows(cfg, state_dir, now=now)]
 
 
-def grant_from_config(cfg, state_dir, name, minutes, now=None):
+def grant_from_config(cfg, state_dir, resource_type, resource_id, minutes, now=None):
     from .policy import resolve_policy
 
     now = now or datetime.now()
-    resource_id, resource = find_resource(cfg, name)
-    if resource_id is None:
-        raise ValueError(f"Unknown resource {name!r}")
+    resource = find_resource(cfg, resource_type=resource_type, resource_id=resource_id)
+    if resource is None:
+        raise ValueError(f"Unknown resource {resource_type}/{resource_id}")
     if not resource.get("enabled", True):
-        raise ValueError(f"{resource_id} is disabled")
+        raise ValueError(f"{resource_type}/{resource_id} is disabled")
     policy = resolve_policy(resource, now=now)
-    return resource_id, apply_grant(state_dir, resource_id, policy, minutes, now=now)
+    rtype, rid = resource_key(resource)
+    return resource, apply_grant(state_dir, rtype, rid, policy, minutes, now=now)

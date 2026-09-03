@@ -8,8 +8,11 @@ from timefence.budget import (
     resource_budget,
     summarize,
 )
+from timefence.identity import RESOURCE_TYPE_APP, RESOURCE_TYPE_VIDEO_CATEGORY
 from timefence.usage import add_usage
 from tests.helpers import make_config, make_day_policy, make_resource, make_window, write_rules
+
+ROBLOX = "com.roblox.RobloxPlayer"
 
 MONDAY_AFTERNOON = datetime(2024, 1, 15, 16, 30)
 
@@ -38,9 +41,8 @@ def test_resource_budget_daily_and_current_window(app_dir):
             ],
         ),
     )
-    add_usage(app_dir / "state", "roblox", 12 * 60, window_id="after_school", now=MONDAY_AFTERNOON)
+    add_usage(app_dir / "state", RESOURCE_TYPE_APP, ROBLOX, 12 * 60, window_id="after_school", now=MONDAY_AFTERNOON)
     row = resource_budget(
-        "roblox",
         resource,
         {"total_usage_seconds": 12 * 60, "windows": {"after_school": {"usage_seconds": 12 * 60}}},
         MONDAY_AFTERNOON,
@@ -61,26 +63,37 @@ def test_summarize_skips_disabled_and_formats_text(app_dir):
     write_rules(
         app_dir,
         make_config(
-            resources={
-                "roblox": make_resource(
+            resources=[
+                make_resource(
                     display_name="Roblox",
                     default=make_day_policy(daily_limit_minutes=45),
                 ),
-                "youtube": make_resource(enabled=False, default=make_day_policy()),
-            }
+                make_resource(
+                    enabled=False,
+                    resource_type=RESOURCE_TYPE_VIDEO_CATEGORY,
+                    resource_id="youtube_videos",
+                    display_name="YouTube",
+                    default=make_day_policy(),
+                ),
+            ]
         ),
     )
-    add_usage(app_dir / "state", "roblox", 600, window_id="all_day", now=MONDAY_AFTERNOON)
+    add_usage(app_dir / "state", RESOURCE_TYPE_APP, ROBLOX, 600, window_id="all_day", now=MONDAY_AFTERNOON)
     text = format_summary(
         summarize(
             make_config(
-                resources={
-                    "roblox": make_resource(
+                resources=[
+                    make_resource(
                         display_name="Roblox",
                         default=make_day_policy(daily_limit_minutes=45),
                     ),
-                    "youtube": make_resource(enabled=False),
-                }
+                    make_resource(
+                        enabled=False,
+                        resource_type=RESOURCE_TYPE_VIDEO_CATEGORY,
+                        resource_id="youtube_videos",
+                        display_name="YouTube",
+                    ),
+                ]
             ),
             app_dir / "state",
             now=MONDAY_AFTERNOON,

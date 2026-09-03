@@ -12,10 +12,10 @@ class EnforcementService:
     def __init__(self, module_for):
         self._module_for = module_for
 
-    def enforce(self, name, resource):
-        mod = self._module_for(name, resource)
+    def enforce(self, resource, name=None):
+        mod = self._module_for(resource)
         if mod is None:
-            logging.warning("No enforcement module for %s", name)
+            logging.warning("No enforcement module for %s/%s", resource.get("resource_type"), resource.get("resource_id"))
             return False
         mod.enforce(resource)
         return True

@@ -77,6 +77,9 @@ def resource_label(name, resource=None):
             value = resource.get(key)
             if isinstance(value, str) and value.strip():
                 return value.strip()
+        rid = resource.get("resource_id")
+        if isinstance(rid, str) and rid.strip():
+            return rid.strip()
     return name
 
 

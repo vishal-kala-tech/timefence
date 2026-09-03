@@ -5,11 +5,17 @@ from timefence import browse
 
 def test_parse_page_keeps_host_and_http_urls():
     page = browse.parse_page("https://www.roblox.com/games/123?x=1#frag", "Adopt Me!")
-    assert page == {
-        "host": "www.roblox.com",
-        "url": "https://www.roblox.com/games/123?x=1",
-        "title": "Adopt Me!",
-    }
+    assert page["host"] == "roblox.com"
+    assert page["url"] == "https://www.roblox.com/games/123?x=1"
+    assert page["title"] == "Adopt Me!"
+    assert page["resource_type"] == "website"
+    assert page["resource_id"] == "roblox.com"
+
+
+def test_parse_page_strips_www_from_github():
+    page = browse.parse_page("https://www.github.com/cursor/timefence", "TimeFence")
+    assert page["host"] == "github.com"
+    assert page["resource_id"] == "github.com"
 
 
 def test_parse_page_skips_blank_and_non_http():
@@ -30,7 +36,7 @@ def test_inspect_returns_front_tab(monkeypatch):
         ),
     )
     page = browse.inspect()
-    assert page["host"] == "www.google.com"
+    assert page["host"] == "google.com"
     assert page["url"] == "https://www.google.com/search?q=cats"
     assert page["title"] == "Google"
 
@@ -167,8 +173,10 @@ def test_note_visit_writes_browse_visits_to_sqlite(tmp_path):
     visits = store.get_browse_visits("2024-01-15")
     assert len(visits) == 1
     assert visits[0]["host"] == "www.youtube.com"
+    assert visits[0]["resource_id"] == "youtube.com"
     assert visits[0]["usage_seconds"] == 30
-    assert visits[0]["browser"] == "chrome"
+    assert visits[0]["browser_name"] == "Google Chrome"
+    assert visits[0]["browser_resource_id"] == "com.google.Chrome"
     assert visits[0]["last_seen"] == "16:30:15"
 
 
@@ -191,7 +199,7 @@ def test_load_browse_state_prefers_sqlite_over_json(tmp_path):
     assert state["visits"][0]["usage_seconds"] == 15
 
 
-def test_json_browse_visits_are_seeded_into_sqlite(tmp_path):
+def test_json_browse_visits_are_used_when_sqlite_has_no_rows(tmp_path):
     from datetime import datetime
     import json
 
@@ -219,5 +227,6 @@ def test_json_browse_visits_are_seeded_into_sqlite(tmp_path):
     )
     state = browse.load_browse_state(tmp_path, now=when)
     assert state["visits"][0]["usage_seconds"] == 30
+    assert state["visits"][0]["url"] == "https://www.youtube.com/watch?v=abc"
     store = SqliteUsageStore(tmp_path / "screen_time.sqlite")
-    assert store.get_browse_visits("2024-01-15")[0]["url"] == "https://www.youtube.com/watch?v=abc"
+    assert store.get_browse_visits("2024-01-15") == []
